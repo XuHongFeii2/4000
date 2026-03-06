@@ -1,0 +1,67 @@
+name: Build Desktop Apps
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.29.2 --activate
+
+      - name: Show pnpm version
+        run: pnpm -v
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download uv (all)
+        run: pnpm run uv:download
+
+      - name: Set mirrors (optional for non-macOS)
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          echo "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/" >> $GITHUB_ENV
+          echo "ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/" >> $GITHUB_ENV
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: pnpm run package:win
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: pnpm run package:mac
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: pnpm run package:linux
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-artifacts
+          path: |
+            release/**
+            release-oneclick/**
+          if-no-files-found: ignore
