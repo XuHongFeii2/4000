@@ -51,8 +51,8 @@ publish:
     url: https://oss.intelli-spectrum.com/latest
     useMultipleRangeRequest: false
   - provider: github
-    owner: ValueCell-ai
-    repo: ClawX
+    owner: XuHongFeii2
+    repo: claw
 
 # macOS Configuration
 mac:
