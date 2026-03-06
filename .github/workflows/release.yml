@@ -217,10 +217,6 @@ jobs:
   #   beta/            → beta   releases (beta.yml,   beta-mac.yml,  …)
   #   releases/vX.Y.Z/ → permanent archive, never deleted
   # ──────────────────────────────────────────────────────────────
-  upload-oss:
-    if: false
-    runs-on: ubuntu-latest
-
   # ──────────────────────────────────────────────────────────────
   # Job: Finalize Release
   # Promotes the GitHub Release from pre-release to latest AFTER
