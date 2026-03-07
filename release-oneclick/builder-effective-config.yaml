@@ -1,11 +1,11 @@
 directories:
   output: release-oneclick
   buildResources: resources
-appId: app.clawx.desktop
-productName: 逻辑工坊
-copyright: Copyright © 2026 逻辑工坊
+appId: app.logicclaw.desktop
+productName: EasyClaw
+copyright: Copyright © 2026 EasyClaw
 compression: maximum
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+artifactName: ${name}-${version}-${os}-${arch}.${ext}
 files:
   - filter:
       - dist
@@ -32,8 +32,8 @@ publish:
     url: https://oss.intelli-spectrum.com/latest
     useMultipleRangeRequest: false
   - provider: github
-    owner: ValueCell-ai
-    repo: ClawX
+    owner: XuHongFeii2
+    repo: claw
 mac:
   extraResources:
     - from: resources/bin/darwin-${arch}
@@ -42,6 +42,7 @@ mac:
       to: cli/
   category: public.app-category.productivity
   icon: resources/icons/icon.icns
+  identity: null
   target:
     - target: dmg
       arch:
@@ -52,11 +53,11 @@ mac:
         - x64
         - arm64
   darkModeSupport: true
-  hardenedRuntime: true
+  hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: entitlements.mac.plist
   entitlementsInherit: entitlements.mac.plist
-  notarize: true
+  notarize: false
   extendInfo:
     NSMicrophoneUsageDescription: ClawX requires microphone access for voice features
     NSCameraUsageDescription: ClawX requires camera access for video features
@@ -91,20 +92,24 @@ win:
         - x64
         - arm64
 nsis:
-  oneClick: true
+  oneClick: false
   perMachine: false
   warningsAsErrors: false
-  allowToChangeInstallationDirectory: false
+  allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
   differentialPackage: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 逻辑工坊
-  uninstallDisplayName: 逻辑工坊
+  shortcutName: EasyClaw
+  uninstallDisplayName: EasyClaw
   license: LICENSE
   include: scripts/installer.nsh
   installerIcon: resources/icons/icon.ico
   uninstallerIcon: resources/icons/icon.ico
+  installerLanguages:
+    - zh_CN
+    - en_US
+  multiLanguageInstaller: true
 linux:
   extraResources:
     - from: resources/bin/linux-${arch}
@@ -124,17 +129,18 @@ linux:
     - target: rpm
       arch:
         - x64
+        - arm64
   category: Utility
-  maintainer: 逻辑工坊团队 <public@valuecell.ai>
-  vendor: 逻辑工坊
+  maintainer: EasyClaw团队 <public@valuecell.ai>
+  vendor: EasyClaw
   synopsis: AI Assistant powered by OpenClaw
   description: |
-    逻辑工坊 is a graphical AI assistant application that integrates with
+    EasyClaw is a graphical AI assistant application that integrates with
     OpenClaw Gateway to provide intelligent automation and assistance
     across multiple messaging platforms.
   desktop:
     entry:
-      Name: 逻辑工坊
+      Name: EasyClaw
       Comment: AI Assistant powered by OpenClaw
       Categories: Utility;Network;
       Keywords: ai;assistant;automation;chat;

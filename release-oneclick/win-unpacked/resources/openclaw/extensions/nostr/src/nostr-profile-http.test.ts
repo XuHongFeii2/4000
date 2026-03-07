@@ -79,7 +79,7 @@ function createMockResponse(): ServerResponse & {
 
   res.end = function (chunk?: unknown) {
     if (chunk) {
-       
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
       data += String(chunk);
     }
     return this;

@@ -106,6 +106,35 @@ export function Chat() {
   const shouldRenderStreaming = sending && (hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus);
   const hasAnyStreamContent = hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus;
 
+  // Chat Ad State
+  const [chatAd, setChatAd] = useState<any>(null);
+
+  // Fetch Chat Ad
+  useEffect(() => {
+    const fetchAd = async () => {
+      try {
+        const response = await fetch(`${WS_URL}/api/ad/config?client_type=software_chat`);
+        if (response.ok) {
+          const data = await response.json();
+          // The API might return { software_chat: { ... } } or just the ad object
+          const adData = data.software_chat || data;
+          if (adData && adData.is_active) {
+            setChatAd(adData);
+          } else {
+            setChatAd(null);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch chat ad:', error);
+      }
+    };
+
+    fetchAd();
+    // Refresh ad every 5 minutes
+    const interval = setInterval(fetchAd, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 2.5rem)' }}>
       {/* Toolbar */}
@@ -184,6 +213,32 @@ export function Chat() {
             >
               {t('common:actions.dismiss')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Ad (Above Input) */}
+      {chatAd && chatAd.image_url && (
+        <div className="px-4 pb-2">
+          <div 
+            className="max-w-4xl mx-auto rounded-lg overflow-hidden cursor-pointer shadow-sm hover:shadow-md transition-shadow relative group"
+            onClick={() => {
+              window.electron.openExternal(chatAd.target_url);
+              // Log ad click
+              fetch(`${WS_URL}/api/ad/log`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ad_id: chatAd.id })
+              }).catch(console.error);
+            }}
+          >
+            <div className="absolute top-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm z-10">AD</div>
+            <img 
+              src={chatAd.image_url} 
+              alt="Ad" 
+              className="w-full h-[100px] object-cover" 
+              style={{ objectPosition: 'center' }}
+            />
           </div>
         </div>
       )}

@@ -98,7 +98,7 @@ async function initiateCallAndPrintId(params: {
   if (!result.success) {
     throw new Error(result.error || "initiate failed");
   }
-   
+  // eslint-disable-next-line no-console
   console.log(JSON.stringify({ callId: result.callId }, null, 2));
 }
 
@@ -172,7 +172,7 @@ export function registerVoiceCallCli(params: {
       if (!result.success) {
         throw new Error(result.error || "continue failed");
       }
-       
+      // eslint-disable-next-line no-console
       console.log(JSON.stringify(result, null, 2));
     });
 
@@ -187,7 +187,7 @@ export function registerVoiceCallCli(params: {
       if (!result.success) {
         throw new Error(result.error || "speak failed");
       }
-       
+      // eslint-disable-next-line no-console
       console.log(JSON.stringify(result, null, 2));
     });
 
@@ -201,7 +201,7 @@ export function registerVoiceCallCli(params: {
       if (!result.success) {
         throw new Error(result.error || "end failed");
       }
-       
+      // eslint-disable-next-line no-console
       console.log(JSON.stringify(result, null, 2));
     });
 
@@ -212,7 +212,7 @@ export function registerVoiceCallCli(params: {
     .action(async (options: { callId: string }) => {
       const rt = await ensureRuntime();
       const call = rt.manager.getCall(options.callId);
-       
+      // eslint-disable-next-line no-console
       console.log(JSON.stringify(call ?? { found: false }, null, 2));
     });
 
@@ -235,7 +235,7 @@ export function registerVoiceCallCli(params: {
       const initial = fs.readFileSync(file, "utf8");
       const lines = initial.split("\n").filter(Boolean);
       for (const line of lines.slice(Math.max(0, lines.length - since))) {
-         
+        // eslint-disable-next-line no-console
         console.log(line);
       }
 
@@ -255,7 +255,7 @@ export function registerVoiceCallCli(params: {
               offset = stat.size;
               const text = buf.toString("utf8");
               for (const line of text.split("\n").filter(Boolean)) {
-                 
+                // eslint-disable-next-line no-console
                 console.log(line);
               }
             } finally {
@@ -306,7 +306,7 @@ export function registerVoiceCallCli(params: {
         }
       }
 
-       
+      // eslint-disable-next-line no-console
       console.log(
         JSON.stringify(
           {
@@ -339,7 +339,7 @@ export function registerVoiceCallCli(params: {
         if (mode === "off") {
           await cleanupTailscaleExposureRoute({ mode: "serve", path: tsPath });
           await cleanupTailscaleExposureRoute({ mode: "funnel", path: tsPath });
-           
+          // eslint-disable-next-line no-console
           console.log(JSON.stringify({ ok: true, mode: "off", path: tsPath }, null, 2));
           return;
         }
@@ -355,7 +355,7 @@ export function registerVoiceCallCli(params: {
           ? `https://login.tailscale.com/f/${mode}?node=${tsInfo.nodeId}`
           : null;
 
-         
+        // eslint-disable-next-line no-console
         console.log(
           JSON.stringify(
             {

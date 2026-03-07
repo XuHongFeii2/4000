@@ -18,6 +18,17 @@ import { Settings } from './pages/Settings';
 import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
+import { io } from 'socket.io-client';
+import { WS_URL } from './config/app-config';
+import { useState } from 'react';
+import { X } from 'lucide-react';
+
+// Initialize Socket.io connection
+const socket = io(WS_URL, {
+  transports: ['websocket'],
+  autoConnect: true,
+  reconnection: true
+});
 
 
 /**
@@ -93,6 +104,74 @@ function App() {
   const setupComplete = useSettingsStore((state) => state.setupComplete);
   const initGateway = useGatewayStore((state) => state.init);
 
+  // Ad State
+  const [showAd, setShowAd] = useState(false);
+  const [adData, setAdData] = useState<any>(null);
+
+  useEffect(() => {
+    // Check for ad on initial load
+    const checkAd = async () => {
+      try {
+        const response = await fetch(`${WS_URL}/api/ad/config?client_type=software`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data) {
+            setAdData(data);
+            setShowAd(true);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch ad:', error);
+      }
+    };
+    
+    // Only check once on mount (or if logic needs to be on every 'home' visit, check location)
+    // "首次进入主页面的时候" -> usually means app startup.
+    checkAd();
+  }, []);
+
+  const handleAdClick = async () => {
+    if (!adData) return;
+    
+    // Log click
+    try {
+      await fetch(`${WS_URL}/api/ad/log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ad_id: adData.id })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+    
+    // Open external link
+    // Electron usually handles target="_blank" by opening external browser if configured, 
+    // or we might need window.electron.openExternal(url) if available.
+    // Assuming standard web behavior for now, or that window.open works.
+    window.open(adData.target_url, '_blank');
+  };
+
+  useEffect(() => {
+    // Socket event listeners
+    socket.on('connect', () => {
+      console.log('Connected to EasyClaw Server:', socket.id);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from EasyClaw Server');
+    });
+
+    socket.on('status', (data) => {
+      console.log('Server Status:', data);
+    });
+
+    return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('status');
+    };
+  }, []);
+
   useEffect(() => {
     initSettings();
   }, [initSettings]);
@@ -152,6 +231,33 @@ function App() {
   return (
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>
+        {/* Ad Modal */}
+        {showAd && adData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="relative bg-[#0F172A] border border-white/10 rounded-xl p-4 w-[80%] h-[80%] shadow-2xl flex flex-col items-center animate-in fade-in zoom-in duration-300">
+              <button 
+                onClick={() => setShowAd(false)} 
+                className="absolute top-2 right-2 p-1 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors z-10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              <div 
+                className="cursor-pointer w-full h-full overflow-hidden rounded-lg hover:opacity-95 transition-opacity flex items-center justify-center"
+                onClick={handleAdClick}
+              >
+                <img 
+                  src={adData.image_url} 
+                  alt="Advertisement" 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              
+              <p className="text-xs text-gray-500 mt-2 absolute bottom-2">Advertisement</p>
+            </div>
+          </div>
+        )}
+
         <Routes>
           {/* Setup wizard (shown on first launch) */}
           <Route path="/setup/*" element={<Setup />} />

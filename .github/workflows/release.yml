@@ -95,14 +95,22 @@ jobs:
         if: matrix.platform == 'win'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm run build:vite && pnpm exec zx scripts/bundle-openclaw.mjs && pnpm exec electron-builder --win --publish never
+        run: |
+          pnpm run build:vite
+          pnpm exec zx scripts/bundle-openclaw.mjs
+          pnpm run bundle:openclaw-plugins
+          pnpm exec electron-builder --win --publish always
 
       # Linux specific steps
       - name: Build Linux
         if: matrix.platform == 'linux'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm run build:vite && pnpm exec zx scripts/bundle-openclaw.mjs && pnpm exec electron-builder --linux --publish never
+        run: |
+          pnpm run build:vite
+          pnpm exec zx scripts/bundle-openclaw.mjs
+          pnpm run bundle:openclaw-plugins
+          pnpm exec electron-builder --linux --publish always
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

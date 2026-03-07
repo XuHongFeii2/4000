@@ -17,6 +17,10 @@ import {
   Terminal,
   ExternalLink,
   Trash2,
+  BookOpen,
+  X,
+  Mail,
+  Heart
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settings';
@@ -25,6 +29,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from 'react-i18next';
+import { useEffect } from 'react';
+import { WS_URL } from '@/config/app-config';
+import wechatWorkImg from '@/assets/community/wechat-work.png';
+import dashangImg from '@/assets/community/dashang.jpg';
 
 interface NavItemProps {
   to: string;
@@ -70,6 +78,54 @@ export function Sidebar() {
   const sidebarCollapsed = useSettingsStore((state) => state.sidebarCollapsed);
   const setSidebarCollapsed = useSettingsStore((state) => state.setSidebarCollapsed);
   const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
+  const language = useSettingsStore((state) => state.language);
+  const { t } = useTranslation('common');
+
+  // Use Case State
+  const [showUseCases, setShowUseCases] = useState(false);
+  const [useCases, setUseCases] = useState<any[]>([]);
+
+  // Contact Modal State
+  const [showContactModal, setShowContactModal] = useState(false);
+
+  // Ad State
+  const [sidebarAd, setSidebarAd] = useState<any>(null);
+
+  useEffect(() => {
+    // Fetch Use Cases
+    if (showUseCases) {
+      fetch(`${WS_URL}/api/usecases`)
+        .then(res => res.json())
+        .then(data => setUseCases(data))
+        .catch(err => console.error(err));
+    }
+  }, [showUseCases]);
+
+  // Fetch Sidebar Ad
+  useEffect(() => {
+    const fetchAd = async () => {
+      try {
+        const response = await fetch(`${WS_URL}/api/ad/config?client_type=software_sidebar`);
+        if (response.ok) {
+          const data = await response.json();
+          // The API might return { software_sidebar: { ... } } or just the ad object
+          const adData = data.software_sidebar || data;
+          if (adData && adData.is_active) {
+            setSidebarAd(adData);
+          } else {
+            setSidebarAd(null);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch sidebar ad:', error);
+      }
+    };
+
+    fetchAd();
+    // Refresh ad every 5 minutes
+    const interval = setInterval(fetchAd, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const sessions = useChatStore((s) => s.sessions);
   const currentSessionKey = useChatStore((s) => s.currentSessionKey);
@@ -105,7 +161,16 @@ export function Sidebar() {
     }
   };
 
-  const { t } = useTranslation();
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      // In a real app, you might want to show a toast here
+      alert(language === 'zh' ? '已复制到剪贴板' : 'Copied to clipboard');
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
   const [sessionToDelete, setSessionToDelete] = useState<{ key: string; label: string } | null>(null);
 
   const navItems = [
@@ -195,6 +260,42 @@ export function Sidebar() {
         )}
       </nav>
 
+      {/* Sidebar Ad */}
+      {!sidebarCollapsed && sidebarAd && (
+        <div className="p-2 mt-auto">
+          <div 
+            className="rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden cursor-pointer hover:shadow-md transition-shadow group relative"
+            onClick={() => {
+              window.electron.openExternal(sidebarAd.target_url);
+              // Log ad click
+              fetch(`${WS_URL}/api/ad/log`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ad_id: sidebarAd.id })
+              }).catch(console.error);
+            }}
+          >
+            {sidebarAd.image_url && (
+              <div className="aspect-video w-full overflow-hidden">
+                <img 
+                  src={sidebarAd.image_url} 
+                  alt={sidebarAd.title || 'Ad'} 
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              </div>
+            )}
+            <div className="p-3">
+              {sidebarAd.title && <h4 className="font-semibold text-sm mb-1 line-clamp-1">{sidebarAd.title}</h4>}
+              {sidebarAd.description && <p className="text-xs text-muted-foreground line-clamp-2">{sidebarAd.description}</p>}
+              <div className="mt-2 text-[10px] text-muted-foreground/50 uppercase tracking-wider flex items-center gap-1">
+                <span className="bg-muted px-1 rounded">AD</span>
+                <ExternalLink className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="p-2 space-y-2">
         {devModeUnlocked && !sidebarCollapsed && (
@@ -209,6 +310,30 @@ export function Sidebar() {
             <ExternalLink className="h-3 w-3 ml-auto" />
           </Button>
         )}
+
+        <Button
+          variant="ghost"
+          className={cn(
+            "w-full justify-start text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            sidebarCollapsed && "justify-center px-2"
+          )}
+          onClick={() => setShowUseCases(true)}
+        >
+          <BookOpen className="h-5 w-5 mr-2" />
+          {!sidebarCollapsed && <span>{language === 'zh' ? '使用案例' : 'Use Cases'}</span>}
+        </Button>
+
+        <Button
+          variant="ghost"
+          className={cn(
+            "w-full justify-start text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            sidebarCollapsed && "justify-center px-2"
+          )}
+          onClick={() => setShowContactModal(true)}
+        >
+          <Mail className="h-5 w-5 mr-2" />
+          {!sidebarCollapsed && <span>{language === 'zh' ? '联系我们' : 'Contact Us'}</span>}
+        </Button>
 
         <Button
           variant="ghost"
@@ -239,6 +364,176 @@ export function Sidebar() {
         }}
         onCancel={() => setSessionToDelete(null)}
       />
+
+      {/* Use Cases Modal */}
+      {showUseCases && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative bg-[#0F172A] border border-white/10 rounded-xl w-[90%] h-[90%] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-4 border-b border-white/10 bg-[#1E293B]">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <BookOpen className="w-6 h-6 text-primary" />
+                {language === 'zh' ? 'OpenClaw 使用案例库' : 'OpenClaw Use Case Library'}
+              </h2>
+              <Button variant="ghost" size="icon" onClick={() => setShowUseCases(false)} className="hover:bg-red-500/20 hover:text-red-500">
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {useCases.map((useCase) => (
+                  <div 
+                    key={useCase.id} 
+                    className="bg-[#1E293B]/50 border border-white/5 rounded-lg p-4 hover:border-primary/50 hover:bg-[#1E293B] transition-all cursor-pointer group flex flex-col h-full"
+                    onClick={() => window.electron.openExternal(useCase.url)}
+                  >
+                    <h3 className="text-lg font-semibold text-primary mb-2 group-hover:text-primary/80 transition-colors">
+                      {language === 'zh' ? useCase.name_zh : useCase.name_en}
+                    </h3>
+                    <p className="text-sm text-gray-400 flex-1">
+                      {language === 'zh' ? useCase.desc_zh : useCase.desc_en}
+                    </p>
+                    <div className="mt-4 pt-4 border-t border-white/5 flex items-center text-xs text-gray-500 group-hover:text-primary transition-colors">
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      {language === 'zh' ? '查看详情' : 'View Details'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contact Modal */}
+      {showContactModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative bg-[#0F172A] border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl transform transition-all animate-in zoom-in-95 duration-200 max-h-[85vh] overflow-y-auto">
+            <button 
+              onClick={() => setShowContactModal(false)} 
+              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors z-10"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            
+            <div className="text-center mb-6">
+              <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary/5">
+                <Mail className="w-8 h-8 text-primary" />
+              </div>
+              <h3 className="text-2xl font-bold mb-2 text-white">
+                {language === 'zh' ? '欢迎加入龙虾学习营' : 'Welcome to Lobster Learning Camp'}
+              </h3>
+              <p className="text-gray-400">
+                {language === 'zh' ? '24小时提供 EasyClaw 远程配置服务' : '24/7 EasyClaw remote configuration service'}
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              {/* Email */}
+              <div className="bg-[#1E293B]/30 rounded-xl p-4 border border-white/5 flex items-center justify-between gap-4 group hover:border-primary/30 transition-colors">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-white/5 p-2 rounded-lg">
+                    <Mail className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                      <span className="text-xs text-gray-500">Email</span>
+                      <span className="font-mono text-gray-200 truncate select-all">328019437@qq.com</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => copyToClipboard('328019437@qq.com')} 
+                  className="text-xs bg-primary/10 hover:bg-primary hover:text-white text-primary px-3 py-1.5 rounded-lg transition-colors font-medium"
+                >
+                  {language === 'zh' ? '复制' : 'Copy'}
+                </button>
+              </div>
+
+              {/* WeChat */}
+              <div className="bg-[#1E293B]/30 rounded-xl p-4 border border-white/5 flex items-center justify-between gap-4 group hover:border-primary/30 transition-colors">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-white/5 p-2 rounded-lg">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                      <span className="text-xs text-gray-500">WeChat</span>
+                      <span className="font-mono text-gray-200 truncate select-all">luxixi20010201</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => copyToClipboard('luxixi20010201')} 
+                  className="text-xs bg-primary/10 hover:bg-primary hover:text-white text-primary px-3 py-1.5 rounded-lg transition-colors font-medium"
+                >
+                  {language === 'zh' ? '复制' : 'Copy'}
+                </button>
+              </div>
+
+              {/* WhatsApp */}
+              <div className="bg-[#1E293B]/30 rounded-xl p-4 border border-white/5 flex items-center justify-between gap-4 group hover:border-primary/30 transition-colors">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-white/5 p-2 rounded-lg">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                      <span className="text-xs text-gray-500">WhatsApp</span>
+                      <span className="font-mono text-gray-200 truncate select-all">+8615065676902</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => copyToClipboard('+8615065676902')} 
+                  className="text-xs bg-primary/10 hover:bg-primary hover:text-white text-primary px-3 py-1.5 rounded-lg transition-colors font-medium"
+                >
+                  {language === 'zh' ? '复制' : 'Copy'}
+                </button>
+              </div>
+
+              {/* WeChat Work */}
+              <div className="bg-[#1E293B]/30 rounded-xl p-4 border border-white/5 flex items-center justify-between gap-4 group hover:border-primary/30 transition-colors relative">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-white/5 p-2 rounded-lg">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                      <span className="text-xs text-gray-500">{language === 'zh' ? '企业微信 (悬停扫码)' : 'WeChat Work (Hover to Scan)'}</span>
+                      <span className="font-mono text-gray-200 truncate select-all">{language === 'zh' ? 'EasyClaw 官方客服' : 'EasyClaw Official Support'}</span>
+                  </div>
+                </div>
+                
+                {/* Hover Image (Fixed Center) */}
+                <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[100]">
+                   <div className="bg-white p-2 rounded-xl shadow-2xl w-96 border-4 border-primary/20">
+                     <img src={wechatWorkImg} alt="WeChat Work QR" className="w-full h-auto rounded-lg" />
+                     <div className="text-center text-gray-800 mt-2 font-bold">{language === 'zh' ? 'EasyClaw 客服' : 'EasyClaw Support'}</div>
+                   </div>
+                </div>
+              </div>
+
+              {/* Donation (Dashang) */}
+              <div className="bg-[#1E293B]/30 rounded-xl p-4 border border-white/5 flex items-center justify-between gap-4 group hover:border-primary/30 transition-colors relative">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-white/5 p-2 rounded-lg">
+                    <Heart className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div className="flex flex-col text-left">
+                      <span className="text-xs text-gray-500">{language === 'zh' ? '打赏作者 (悬停扫码)' : 'Donate (Hover to Scan)'}</span>
+                      <span className="font-mono text-gray-200 truncate select-all">{language === 'zh' ? '感谢支持开源开发' : 'Support Open Source'}</span>
+                  </div>
+                </div>
+                
+                {/* Hover Image (Fixed Center) */}
+                <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[100]">
+                   <div className="bg-white p-4 rounded-xl shadow-2xl w-96 text-center border-4 border-red-500/20">
+                     <img src={dashangImg} alt="Donation QR" className="w-full h-auto rounded-lg mb-3" />
+                     <div className="text-gray-800 text-xs font-mono break-all bg-gray-100 p-2 rounded border border-gray-200 select-all pointer-events-auto">
+                       TDkoPfk7WPjyxFpoP1Ja85bULbkKYh9Cm4
+                     </div>
+                     <div className="text-gray-500 text-[10px] mt-1">{language === 'zh' ? 'USDT (TRC20) 地址' : 'USDT (TRC20) Address'}</div>
+                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

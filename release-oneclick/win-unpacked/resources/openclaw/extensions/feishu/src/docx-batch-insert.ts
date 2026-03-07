@@ -60,7 +60,7 @@ function collectDescendants(blocks: any[], firstLevelIds: string[]): any[] {
  * @param parentBlockId - Parent block to insert into (defaults to docToken)
  * @param index - Position within parent's children (-1 = end)
  */
- 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK block types
 async function insertBatch(
   client: Lark.Client,
   docToken: string,
@@ -107,7 +107,7 @@ async function insertBatch(
  *   each batch advances this by the number of first-level IDs inserted so far.
  * @returns Inserted children blocks and any skipped block IDs
  */
- 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK block types
 export async function insertBlocksInBatches(
   client: Lark.Client,
   docToken: string,

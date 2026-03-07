@@ -170,7 +170,7 @@ export function cleanBlocksForDescendant(blocks: any[]): any[] {
   }
 
   return blocks.map((block) => {
-     
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { parent_id: _parentId, ...cleanBlock } = block;
 
     // Fix: Convert API sometimes returns children as string for TableCell
@@ -180,7 +180,7 @@ export function cleanBlocksForDescendant(blocks: any[]): any[] {
 
     // Clean table blocks
     if (cleanBlock.block_type === 31 && cleanBlock.table) {
-       
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { cells: _cells, ...tableWithoutCells } = cleanBlock.table;
       const { row_size, column_size } = tableWithoutCells.property || {};
       const adaptiveWidths = tableWidths.get(block.block_id);

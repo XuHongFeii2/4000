@@ -56,7 +56,7 @@ export async function probeFeishu(
   try {
     const client = createFeishuClient(creds);
     // Use bot/v3/info API to get bot information
-     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK generic request method
     const responseResult = await raceWithTimeoutAndAbort<FeishuBotInfoResponse>(
       (client as any).request({
         method: "GET",

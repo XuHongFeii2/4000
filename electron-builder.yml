@@ -1,6 +1,6 @@
 appId: app.logicclaw.desktop
-productName: 逻辑工坊
-copyright: Copyright © 2026 逻辑工坊
+productName: EasyClaw
+copyright: Copyright © 2026 EasyClaw
 compression: maximum
 artifactName: ${name}-${version}-${os}-${arch}.${ext}
 
@@ -117,22 +117,26 @@ win:
         - arm64
 
 nsis:
-  oneClick: true
+  oneClick: false
   perMachine: false
   # Avoid NSIS build failure: warning 6010 (_ci_StrContains "not referenced") is emitted when
   # building the uninstaller, because that function is only used in the install macro.
   warningsAsErrors: false
-  allowToChangeInstallationDirectory: false
+  allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
   differentialPackage: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 逻辑工坊
-  uninstallDisplayName: 逻辑工坊
+  shortcutName: EasyClaw
+  uninstallDisplayName: EasyClaw
   license: LICENSE
   include: scripts/installer.nsh
   installerIcon: resources/icons/icon.ico
   uninstallerIcon: resources/icons/icon.ico
+  installerLanguages:
+    - zh_CN
+    - en_US
+  multiLanguageInstaller: true
 
 # Linux Configuration
 linux:
@@ -156,16 +160,16 @@ linux:
         - x64
         - arm64
   category: Utility
-  maintainer: 逻辑工坊团队 <public@valuecell.ai>
-  vendor: 逻辑工坊
+  maintainer: EasyClaw团队 <public@valuecell.ai>
+  vendor: EasyClaw
   synopsis: AI Assistant powered by OpenClaw
   description: |
-    逻辑工坊 is a graphical AI assistant application that integrates with
+    EasyClaw is a graphical AI assistant application that integrates with
     OpenClaw Gateway to provide intelligent automation and assistance
     across multiple messaging platforms.
   desktop:
     entry:
-      Name: 逻辑工坊
+      Name: EasyClaw
       Comment: AI Assistant powered by OpenClaw
       Categories: Utility;Network;
       Keywords: ai;assistant;automation;chat;

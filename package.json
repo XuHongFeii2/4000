@@ -1,5 +1,5 @@
 {
-    "name": "logicclaw",
+    "name": "easyclaw",
     "version": "1.0.0-beta.1",
     "pnpm": {
         "onlyBuiltDependencies": [
@@ -11,9 +11,9 @@
             "sharp"
         ]
     },
-    "description": "逻辑工坊 - 基于 OpenClaw 的图形化 AI 助手",
+    "description": "easyclaw - 基于 OpenClaw 的图形化 AI 助手",
     "main": "dist-electron/main/index.js",
-    "author": "逻辑工坊团队",
+    "author": "easyclaw团队",
     "license": "MIT",
     "private": true,
     "scripts": {
@@ -48,6 +48,7 @@
         "clawhub": "^0.5.0",
         "electron-store": "^11.0.2",
         "electron-updater": "^6.8.3",
+        "socket.io-client": "^4.8.3",
         "ws": "^8.19.0"
     },
     "devDependencies": {
