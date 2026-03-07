@@ -1,5 +1,0 @@
-provider: generic
-url: https://oss.intelli-spectrum.com/latest
-useMultipleRangeRequest: false
-channel: beta
-updaterCacheDirName: easyclaw-updater

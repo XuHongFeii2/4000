@@ -25,7 +25,7 @@ import { X } from 'lucide-react';
 
 // Initialize Socket.io connection
 const socket = io(WS_URL, {
-  transports: ['websocket'],
+  transports: ['websocket', 'polling'],
   autoConnect: true,
   reconnection: true
 });
@@ -115,9 +115,22 @@ function App() {
         const response = await fetch(`${WS_URL}/api/ad/config?client_type=software`);
         if (response.ok) {
           const data = await response.json();
-          if (data) {
-            setAdData(data);
+          let picked: any = null;
+          // API may return a dict of positions or a single ad object
+          if (data && typeof data === 'object') {
+            if ('image_url' in data || 'target_url' in data) {
+              picked = data;
+            } else if (data.software && typeof data.software === 'object') {
+              picked = data.software;
+            }
+          }
+          // Only show when we have a valid, non-empty image and target
+          if (picked && picked.image_url && picked.target_url) {
+            setAdData(picked);
             setShowAd(true);
+          } else {
+            setAdData(null);
+            setShowAd(false);
           }
         }
       } catch (error) {

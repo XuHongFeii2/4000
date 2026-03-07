@@ -41,6 +41,9 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [streamingTimestamp, setStreamingTimestamp] = useState<number>(0);
 
+  // Chat Ad State (必须放在任何条件 return 之前，保证 Hook 调用顺序稳定)
+  const [chatAd, setChatAd] = useState<any>(null);
+
   // Load data when gateway is running.
   // When the store already holds messages for this session (i.e. the user
   // is navigating *back* to Chat), use quiet mode so the existing messages
@@ -78,6 +81,32 @@ export function Chat() {
     }
   }, [sending, streamingTimestamp]);
 
+  // Fetch Chat Ad（同样必须在条件 return 之前声明）
+  useEffect(() => {
+    const fetchAd = async () => {
+      try {
+        const response = await fetch(`${WS_URL}/api/ad/config?client_type=software_chat`);
+        if (response.ok) {
+          const data = await response.json();
+          // The API might return { software_chat: { ... } } or just the ad object
+          const adData = data.software_chat || data;
+          if (adData && adData.is_active) {
+            setChatAd(adData);
+          } else {
+            setChatAd(null);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch chat ad:', error);
+      }
+    };
+
+    fetchAd();
+    // Refresh ad every 5 minutes
+    const interval = setInterval(fetchAd, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Gateway not running
   if (!isGatewayRunning) {
     return (
@@ -105,35 +134,6 @@ export function Chat() {
   const hasStreamToolStatus = streamingTools.length > 0;
   const shouldRenderStreaming = sending && (hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus);
   const hasAnyStreamContent = hasStreamText || hasStreamThinking || hasStreamTools || hasStreamImages || hasStreamToolStatus;
-
-  // Chat Ad State
-  const [chatAd, setChatAd] = useState<any>(null);
-
-  // Fetch Chat Ad
-  useEffect(() => {
-    const fetchAd = async () => {
-      try {
-        const response = await fetch(`${WS_URL}/api/ad/config?client_type=software_chat`);
-        if (response.ok) {
-          const data = await response.json();
-          // The API might return { software_chat: { ... } } or just the ad object
-          const adData = data.software_chat || data;
-          if (adData && adData.is_active) {
-            setChatAd(adData);
-          } else {
-            setChatAd(null);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch chat ad:', error);
-      }
-    };
-
-    fetchAd();
-    // Refresh ad every 5 minutes
-    const interval = setInterval(fetchAd, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 2.5rem)' }}>
