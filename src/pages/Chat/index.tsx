@@ -41,8 +41,8 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [streamingTimestamp, setStreamingTimestamp] = useState<number>(0);
 
-  // Chat Ad State (必须放在任何条件 return 之前，保证 Hook 调用顺序稳定)
-  const [chatAd, setChatAd] = useState<any>(null);
+  // Chat Ad State (放在 return 之前，保证 Hook 顺序稳定)
+  const [chatAds, setChatAds] = useState<any[]>([]);
 
   // Load data when gateway is running.
   // When the store already holds messages for this session (i.e. the user
@@ -81,20 +81,23 @@ export function Chat() {
     }
   }, [sending, streamingTimestamp]);
 
-  // Fetch Chat Ad（同样必须在条件 return 之前声明）
+  // Fetch Chat Ads（三栏）
   useEffect(() => {
     const fetchAd = async () => {
       try {
-        const response = await fetch(`${WS_URL}/api/ad/config?client_type=software_chat`);
+        // Request aggregated software ads so we can pick software_chat_1/2/3
+        const response = await fetch(`${WS_URL}/api/ad/config?client_type=software`);
         if (response.ok) {
           const data = await response.json();
-          // The API might return { software_chat: { ... } } or just the ad object
-          const adData = data.software_chat || data;
-          if (adData && adData.is_active) {
-            setChatAd(adData);
-          } else {
-            setChatAd(null);
+          const slots = ['software_chat_1', 'software_chat_2', 'software_chat_3'] as const;
+          const picked: any[] = [];
+          for (const key of slots) {
+            const ad = data?.[key];
+            if (ad && ad.image_url && ad.target_url && (ad.is_active ?? true)) {
+              picked.push(ad);
+            }
           }
+          setChatAds(picked);
         }
       } catch (error) {
         console.error('Failed to fetch chat ad:', error);
@@ -217,28 +220,32 @@ export function Chat() {
         </div>
       )}
 
-      {/* Chat Ad (Above Input) */}
-      {chatAd && chatAd.image_url && (
+      {/* Chat Ads (Above Input) — 三栏布局 */}
+      {chatAds.length > 0 && (
         <div className="px-4 pb-2">
-          <div 
-            className="max-w-4xl mx-auto rounded-lg overflow-hidden cursor-pointer shadow-sm hover:shadow-md transition-shadow relative group"
-            onClick={() => {
-              window.electron.openExternal(chatAd.target_url);
-              // Log ad click
-              fetch(`${WS_URL}/api/ad/log`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ad_id: chatAd.id })
-              }).catch(console.error);
-            }}
-          >
-            <div className="absolute top-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm z-10">AD</div>
-            <img 
-              src={chatAd.image_url} 
-              alt="Ad" 
-              className="w-full h-[100px] object-cover" 
-              style={{ objectPosition: 'center' }}
-            />
+          <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {chatAds.slice(0, 3).map((ad, idx) => (
+              <div
+                key={ad.id || idx}
+                className="rounded-lg overflow-hidden cursor-pointer shadow-sm hover:shadow-md transition-shadow relative group bg-muted"
+                onClick={() => {
+                  try { window.electron.openExternal(ad.target_url); } catch {}
+                  fetch(`${WS_URL}/api/ad/log`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ad_id: ad.id })
+                  }).catch(console.error);
+                }}
+              >
+                <div className="absolute top-1 right-1 bg-black/50 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm z-10">AD</div>
+                <img
+                  src={ad.image_url}
+                  alt={`Ad ${idx + 1}`}
+                  className="w-full h-[100px] object-cover"
+                  style={{ objectPosition: 'center' }}
+                />
+              </div>
+            ))}
           </div>
         </div>
       )}

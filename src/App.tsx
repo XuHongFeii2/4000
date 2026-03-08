@@ -194,6 +194,12 @@ function App() {
     if (language && language !== i18n.language) {
       i18n.changeLanguage(language);
     }
+    // Update tray tooltip to current app name
+    try {
+      const name = appNameForLocale(language || i18n.language);
+      // best-effort, ignore failures on non-electron environments
+      window.electron?.ipcRenderer?.invoke('tray:setTooltip', name).catch(() => {});
+    } catch {}
   }, [language]);
 
   // Initialize Gateway connection on mount

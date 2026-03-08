@@ -7,6 +7,13 @@ import { join } from 'path';
 
 let tray: Tray | null = null;
 
+export function setTrayTooltip(appName?: string) {
+  if (tray) {
+    const name = appName && String(appName).trim() ? appName : app.getName();
+    tray.setToolTip(`${name} - AI Assistant`);
+  }
+}
+
 /**
  * Resolve the icons directory path (works in both dev and packaged mode)
  */
@@ -57,7 +64,7 @@ export function createTray(mainWindow: BrowserWindow): Tray {
   tray = new Tray(icon);
   
   // Set tooltip
-  tray.setToolTip('ClawX - AI Assistant');
+  setTrayTooltip(app.getName());
   
   const showWindow = () => {
     if (mainWindow.isDestroyed()) return;

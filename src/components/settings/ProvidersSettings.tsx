@@ -62,6 +62,7 @@ function fallbackModelsEqual(a?: string[], b?: string[]): boolean {
 export function ProvidersSettings() {
   const { t } = useTranslation('settings');
   const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
+  const [recommendedProviderId, setRecommendedProviderId] = useState<string | null>(null);
   const {
     providers,
     defaultProviderId,
@@ -82,6 +83,13 @@ export function ProvidersSettings() {
     fetchProviders();
   }, [fetchProviders]);
 
+  // Fetch recommended provider from backend
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_WS_URL ?? 'http://easyclaw.bar:5000'}/api/provider/recommended`)
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(String(res.status))))
+      .then(data => setRecommendedProviderId((data?.provider || '').trim() || null))
+      .catch(() => setRecommendedProviderId(null));
+  }, []);
   const handleAddProvider = async (
     type: ProviderType,
     name: string,
@@ -170,6 +178,7 @@ export function ProvidersSettings() {
               provider={provider}
               allProviders={providers}
               isDefault={provider.id === defaultProviderId}
+              recommendedId={recommendedProviderId}
               isEditing={editingProvider === provider.id}
               onEdit={() => setEditingProvider(provider.id)}
               onCancelEdit={() => setEditingProvider(null)}
@@ -198,6 +207,7 @@ export function ProvidersSettings() {
           onAdd={handleAddProvider}
           onValidateKey={(type, key, options) => validateApiKey(type, key, options)}
           devModeUnlocked={devModeUnlocked}
+          recommendedId={recommendedProviderId}
         />
       )}
     </div>
@@ -208,6 +218,7 @@ interface ProviderCardProps {
   provider: ProviderWithKeyInfo;
   allProviders: ProviderWithKeyInfo[];
   isDefault: boolean;
+  recommendedId: string | null;
   isEditing: boolean;
   onEdit: () => void;
   onCancelEdit: () => void;
@@ -227,6 +238,7 @@ function ProviderCard({
   provider,
   allProviders,
   isDefault,
+  recommendedId,
   isEditing,
   onEdit,
   onCancelEdit,
@@ -347,7 +359,7 @@ function ProviderCard({
     <Card className={cn(isDefault && 'ring-2 ring-primary')}>
       <CardContent className="p-4">
         {/* Top row: icon + name */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 relative">
           <div className="flex items-center gap-3">
             {getProviderIconUrl(provider.type) ? (
               <img src={getProviderIconUrl(provider.type)} alt={typeInfo?.name || provider.type} className={cn('h-5 w-5', shouldInvertInDark(provider.type) && 'dark:invert')} />
@@ -361,6 +373,12 @@ function ProviderCard({
               <span className="text-xs text-muted-foreground capitalize">{provider.type}</span>
             </div>
           </div>
+          {/* 推荐角标 */}
+          {recommendedId && provider.type === recommendedId && (
+            <div className="absolute right-0 -top-2">
+              <Badge className="bg-green-600 text-white">推荐</Badge>
+            </div>
+          )}
         </div>
 
         {/* Key row */}
@@ -591,6 +609,7 @@ interface AddProviderDialogProps {
     options?: { baseUrl?: string }
   ) => Promise<{ valid: boolean; error?: string }>;
   devModeUnlocked: boolean;
+  recommendedId: string | null;
 }
 
 function AddProviderDialog({
@@ -599,6 +618,7 @@ function AddProviderDialog({
   onAdd,
   onValidateKey,
   devModeUnlocked,
+  recommendedId,
 }: AddProviderDialogProps) {
   const { t } = useTranslation('settings');
   const [selectedType, setSelectedType] = useState<ProviderType | null>(null);
@@ -801,7 +821,7 @@ function AddProviderDialog({
                     setBaseUrl(type.defaultBaseUrl || '');
                     setModelId(type.defaultModelId || '');
                   }}
-                  className="p-4 rounded-lg border hover:bg-accent transition-colors text-center"
+                  className="relative p-4 rounded-lg border hover:bg-accent transition-colors text-center"
                 >
                   {getProviderIconUrl(type.id) ? (
                     <img src={getProviderIconUrl(type.id)} alt={type.name} className={cn('h-7 w-7 mx-auto', shouldInvertInDark(type.id) && 'dark:invert')} />
@@ -809,6 +829,11 @@ function AddProviderDialog({
                     <span className="text-2xl">{type.icon}</span>
                   )}
                   <p className="font-medium mt-2">{type.id === 'custom' ? t('aiProviders.custom') : type.name}</p>
+                  {recommendedId && type.id === recommendedId && (
+                    <span className="absolute right-2 top-2 inline-block text-[10px] px-1.5 py-0.5 rounded bg-green-600 text-white">
+                      推荐
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

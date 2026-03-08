@@ -46,33 +46,35 @@ const STEP = {
   COMPLETE: 4,
 } as const;
 
-const steps: SetupStep[] = [
-  {
-    id: 'welcome',
-    title: 'Welcome to ClawX',
-    description: 'Your AI assistant is ready to be configured',
-  },
-  {
-    id: 'runtime',
-    title: 'Environment Check',
-    description: 'Verifying system requirements',
-  },
-  {
-    id: 'provider',
-    title: 'AI Provider',
-    description: 'Configure your AI service',
-  },
-  {
-    id: 'installing',
-    title: 'Setting Up',
-    description: 'Installing essential components',
-  },
-  {
-    id: 'complete',
-    title: 'All Set!',
-    description: 'ClawX is ready to use',
-  },
-];
+function buildSteps(appName: string): SetupStep[] {
+  return [
+    {
+      id: 'welcome',
+      title: `Welcome to ${appName}`,
+      description: 'Your AI assistant is ready to be configured',
+    },
+    {
+      id: 'runtime',
+      title: 'Environment Check',
+      description: 'Verifying system requirements',
+    },
+    {
+      id: 'provider',
+      title: 'AI Provider',
+      description: 'Configure your AI service',
+    },
+    {
+      id: 'installing',
+      title: 'Setting Up',
+      description: 'Installing essential components',
+    },
+    {
+      id: 'complete',
+      title: 'All Set!',
+      description: `${appName} is ready to use`,
+    },
+  ];
+}
 
 // Default skills to auto-install (no additional API keys required)
 interface DefaultSkill {
@@ -121,6 +123,7 @@ export function Setup() {
   // Runtime check status
   const [runtimeChecksPassed, setRuntimeChecksPassed] = useState(false);
 
+  const steps = buildSteps(appName);
   const safeStepIndex = Number.isInteger(currentStep)
     ? Math.min(Math.max(currentStep, STEP.WELCOME), steps.length - 1)
     : STEP.WELCOME;
@@ -306,7 +309,7 @@ function WelcomeContent() {
   return (
     <div className="text-center space-y-4">
       <div className="mb-4 flex justify-center">
-        <img src={clawxIcon} alt="ClawX" className="h-16 w-16" />
+        <img src={clawxIcon} alt={appName} className="h-16 w-16" />
       </div>
       <h2 className="text-xl font-semibold">{t('welcome.title', { appName })}</h2>
       <p className="text-muted-foreground">

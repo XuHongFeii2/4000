@@ -54,6 +54,7 @@ import { deviceOAuthManager, OAuthProviderType } from '../utils/device-oauth';
 import { applyProxySettings } from './proxy';
 import { proxyAwareFetch } from '../utils/proxy-fetch';
 import { getRecentTokenUsageHistory } from '../utils/token-usage';
+import { setTrayTooltip } from './tray';
 
 /**
  * For custom/ollama providers, derive a unique key for OpenClaw config files
@@ -74,6 +75,17 @@ export function getOpenClawProviderKey(type: string, providerId: string): string
   }
   return type;
 }
+
+// Tray tooltip setter
+ipcMain.handle('tray:setTooltip', async (_event, appName: string) => {
+  try {
+    setTrayTooltip(appName);
+    return { success: true };
+  } catch (error) {
+    logger.warn('Failed to set tray tooltip:', error);
+    return { success: false, error: String(error) };
+  }
+});
 
 function getProviderModelRef(config: ProviderConfig): string | undefined {
   const providerKey = getOpenClawProviderKey(config.type, config.id);
