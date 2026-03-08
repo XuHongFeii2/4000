@@ -332,7 +332,7 @@ export function Sidebar() {
           onClick={() => setShowContactModal(true)}
         >
           <Mail className="h-5 w-5 mr-2" />
-          {!sidebarCollapsed && <span>{language === 'zh' ? '联系我们' : 'Contact Us'}</span>}
+          {!sidebarCollapsed && <span>{language === 'zh' ? '联系我们(龙虾学习营)' : 'Contact Us(Learning Camp)'}</span>}
         </Button>
 
         <Button
