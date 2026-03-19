@@ -60,6 +60,8 @@ resources/bin
 *.key
 
 build/
+vendor/openclaw-skills/**/__pycache__/
+vendor/openclaw-skills/**/*.pyc
 
 .cursor/
 .pnpm-store/

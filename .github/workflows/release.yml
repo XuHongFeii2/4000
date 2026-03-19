@@ -1,4 +1,4 @@
-# EasyClaw Release Workflow
+# openclaw(chinese) Release Workflow
 # Builds and publishes releases for macOS, Windows, and Linux
 
 name: Release
@@ -174,28 +174,28 @@ jobs:
           make_latest: false
           generate_release_notes: true
           body: |
-            ## 🚀 EasyClaw ${{ github.ref_name }}
+            ## 🚀 openclaw(chinese) ${{ github.ref_name }}
             
-            EasyClaw - Graphical AI Assistant based on OpenClaw
+            openclaw(chinese) - Graphical AI Assistant based on OpenClaw
             
             ### 📦 Downloads
             
             Please select the appropriate installer for your operating system and architecture:
             
             #### macOS
-            - **Apple Silicon (M1/M2/M3/M4)**: `EasyClaw-*-mac-arm64.dmg`
-            - **Intel (x64)**: `EasyClaw-*-mac-x64.dmg`
+            - **Apple Silicon (M1/M2/M3/M4)**: `openclaw-chinese-*-mac-arm64.dmg`
+            - **Intel (x64)**: `openclaw-chinese-*-mac-x64.dmg`
             
             #### Windows
-            - **Installer (x64)**: `EasyClaw-*-win-x64.exe`
-            - **Installer (ARM64)**: `EasyClaw-*-win-arm64.exe`
+            - **Installer (x64)**: `openclaw-chinese-*-win-x64.exe`
+            - **Installer (ARM64)**: `openclaw-chinese-*-win-arm64.exe`
             
             #### Linux
-            - **AppImage (x64)**: `EasyClaw-*-linux-x86_64.AppImage` (Universal format, recommended)
-            - **AppImage (ARM64)**: `EasyClaw-*-linux-arm64.AppImage`
-            - **Debian/Ubuntu (x64)**: `EasyClaw-*-linux-amd64.deb`
-            - **Debian/Ubuntu (ARM64)**: `EasyClaw-*-linux-arm64.deb`
-            - **RPM (x64)**: `EasyClaw-*-linux-x86_64.rpm`
+            - **AppImage (x64)**: `openclaw-chinese-*-linux-x86_64.AppImage` (Universal format, recommended)
+            - **AppImage (ARM64)**: `openclaw-chinese-*-linux-arm64.AppImage`
+            - **Debian/Ubuntu (x64)**: `openclaw-chinese-*-linux-amd64.deb`
+            - **Debian/Ubuntu (ARM64)**: `openclaw-chinese-*-linux-arm64.deb`
+            - **RPM (x64)**: `openclaw-chinese-*-linux-x86_64.rpm`
             
             ### 📝 Release Notes
             
@@ -205,7 +205,7 @@ jobs:
             
             - **macOS**: On first launch, you may see "cannot verify developer". Go to System Preferences → Security & Privacy to allow the app to run
             - **Windows**: SmartScreen may block the app. Click "More info" → "Run anyway" to proceed
-            - **Linux**: AppImage requires executable permission: `chmod +x EasyClaw-*.AppImage`
+            - **Linux**: AppImage requires executable permission: `chmod +x openclaw-chinese-*.AppImage`
             
             ---
             

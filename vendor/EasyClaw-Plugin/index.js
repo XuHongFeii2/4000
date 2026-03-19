@@ -5,8 +5,8 @@ import { createEasyClawMomentsTool, createEasyClawPublishMomentTool } from "./sr
 
 const plugin = {
   id: "easyclaw",
-  name: "lobtalk app",
-  description: "lobtalk app bridge channel plugin for OpenClaw",
+  name: "openclaw(chinese)",
+  description: "openclaw(chinese) bridge channel plugin for OpenClaw",
   configSchema: emptyPluginConfigSchema(),
   register(api) {
     setClawXImRuntime(api.runtime);

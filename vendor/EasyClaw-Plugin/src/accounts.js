@@ -73,7 +73,7 @@ export function resolveBridgeAccount({ cfg, accountId }) {
 
   return {
     accountId: resolvedAccountId,
-    name: toTrimmedString(channelConfig.name) || toTrimmedString(persisted?.name) || "龙虾APP",
+    name: toTrimmedString(channelConfig.name) || toTrimmedString(persisted?.name) || "openclaw中文版",
     enabled: channelConfig.enabled !== false,
     configured: Boolean(serverUrl && deviceId && deviceToken),
     serverUrl,

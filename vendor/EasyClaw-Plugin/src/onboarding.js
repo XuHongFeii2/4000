@@ -29,8 +29,8 @@ export const easyClawOnboardingAdapter = {
       configured: account.configured,
       statusLines: [
         account.configured
-          ? `龙虾APP (${boundLabel}): bound`
-          : "龙虾APP: needs QR binding",
+          ? `openclaw(chinese) (${boundLabel}): bound`
+          : "openclaw(chinese): needs QR binding",
       ],
       selectionHint: account.configured ? "bound" : "needs QR",
       quickstartScore: account.configured ? 4 : 5,
@@ -44,24 +44,24 @@ export const easyClawOnboardingAdapter = {
     if (!account.configured) {
       await prompter.note(
         [
-          "Scan the QR with 龙虾APP on your phone.",
+          "Scan the QR with openclaw(chinese) on your phone.",
           `Binding state is stored under ${resolvePersistedBindingStatePath()}.`,
           `Docs: ${formatDocsLink("/channels/easyclaw", "easyclaw")}`,
         ].join("\n"),
-        "龙虾APP binding",
+        "openclaw(chinese) binding",
       );
     }
 
     const shouldLink = await prompter.confirm({
-      message: account.configured ? "龙虾APP already bound. Re-bind now?" : "Bind 龙虾APP now (QR)?",
+      message: account.configured ? "openclaw(chinese) already bound. Re-bind now?" : "Bind openclaw(chinese) now (QR)?",
       initialValue: !account.configured,
     });
 
     if (!shouldLink) {
       if (!account.configured) {
         await prompter.note(
-          "Run `openclaw channels login --channel easyclaw` later to bind 龙虾APP.",
-          "龙虾APP",
+          "Run `openclaw channels login --channel easyclaw` later to bind openclaw(chinese).",
+          "openclaw(chinese)",
         );
       }
       return {
@@ -80,7 +80,7 @@ export const easyClawOnboardingAdapter = {
       runtime.error?.(`easyclaw login failed: ${String(error)}`);
       await prompter.note(
         `Docs: ${formatDocsLink("/channels/easyclaw", "easyclaw")}`,
-        "龙虾APP help",
+        "openclaw(chinese) help",
       );
     }
 

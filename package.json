@@ -1,5 +1,5 @@
 {
-    "name": "easyclaw",
+    "name": "openclaw-chinese",
     "version": "1.0.2",
     "pnpm": {
         "onlyBuiltDependencies": [
@@ -11,9 +11,9 @@
             "sharp"
         ]
     },
-    "description": "easyclaw - 基于 OpenClaw 的图形化 AI 助手",
+    "description": "openclaw中文版 - 基于 OpenClaw 的图形化 AI 助手",
     "main": "dist-electron/main/index.js",
-    "author": "easyclaw团队",
+    "author": "openclaw中文版团队",
     "license": "MIT",
     "private": true,
     "scripts": {

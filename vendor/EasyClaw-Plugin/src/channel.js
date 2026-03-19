@@ -21,11 +21,11 @@ import { easyClawOnboardingAdapter } from "./onboarding.js";
 
 const meta = {
   id: CHANNEL_ID,
-  label: "lobtalk app",
-  selectionLabel: "lobtalk app(\u9f99\u867eapp,QR link)",
+  label: "openclaw(chinese)",
+  selectionLabel: "openclaw(chinese) (QR link)",
   docsPath: "/channels/easyclaw",
-  docsLabel: "lobtalk app",
-  blurb: "Link lobtalk app through a QR-code registration flow and the bridge WebSocket.",
+  docsLabel: "openclaw(chinese)",
+  blurb: "Link openclaw(chinese) through a QR-code registration flow and the bridge WebSocket.",
   order: 68,
 };
 
@@ -160,17 +160,17 @@ export const easyClawPlugin = {
           : "allows any group member who can @mention the bot to trigger it";
 
       return [
-        `- 龙虾APP groups: groupPolicy="open" ${mentionHint}. Set channels.${CHANNEL_ID}.groupPolicy="allowlist" and channels.${CHANNEL_ID}.groupAllowFrom to restrict senders.`,
+        `- openclaw中文版 groups: groupPolicy="open" ${mentionHint}. Set channels.${CHANNEL_ID}.groupPolicy="allowlist" and channels.${CHANNEL_ID}.groupAllowFrom to restrict senders.`,
       ];
     },
   },
   outbound: {
     deliveryMode: "direct",
     sendText: async () => {
-      throw new Error("龙虾APP direct send is not wired yet. Use the bridge reply flow instead.");
+      throw new Error("openclaw中文版 direct send is not wired yet. Use the bridge reply flow instead.");
     },
     sendMedia: async () => {
-      throw new Error("龙虾APP media send is not wired yet. Use the bridge reply flow instead.");
+      throw new Error("openclaw中文版 media send is not wired yet. Use the bridge reply flow instead.");
     },
   },
   status: {
@@ -217,7 +217,7 @@ export const easyClawPlugin = {
             ? input.httpUrl.trim()
             : "";
       if (candidateUrl && !normalizeServerUrl(candidateUrl)) {
-        return "Invalid 龙虾APP server URL.";
+        return "Invalid openclaw(chinese) server URL.";
       }
       return null;
     },

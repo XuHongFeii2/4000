@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# Post-removal script for ClawX on Linux
+# Post-removal script for openclaw中文版 on Linux
 
 set -e
 
 # Remove symbolic links
 rm -f /usr/local/bin/clawx 2>/dev/null || true
+rm -f /usr/local/bin/openclaw-chinese 2>/dev/null || true
 rm -f /usr/local/bin/openclaw 2>/dev/null || true
 
 # Update desktop database
@@ -18,4 +19,4 @@ if command -v gtk-update-icon-cache &> /dev/null; then
     gtk-update-icon-cache -q /usr/share/icons/hicolor || true
 fi
 
-echo "ClawX has been removed."
+echo "openclaw中文版 has been removed."

@@ -3,8 +3,8 @@
   "channels": [
     "easyclaw"
   ],
-  "name": "lobtalk app",
-  "description": "lobtalk app bridge channel",
+  "name": "openclaw(chinese)",
+  "description": "openclaw(chinese) bridge channel",
   "version": "1.1.1",
   "configSchema": {
     "type": "object",

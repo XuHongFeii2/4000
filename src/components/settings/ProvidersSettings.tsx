@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/stores/settings';
+import { appNameForLocale } from '@/config/app-config';
 
 function normalizeFallbackProviderIds(ids?: string[]): string[] {
   return Array.from(new Set((ids ?? []).filter(Boolean)));
@@ -60,8 +61,9 @@ function fallbackModelsEqual(a?: string[], b?: string[]): boolean {
 }
 
 export function ProvidersSettings() {
-  const { t } = useTranslation('settings');
+  const { t, i18n } = useTranslation('settings');
   const devModeUnlocked = useSettingsStore((state) => state.devModeUnlocked);
+  const appName = appNameForLocale(i18n.language);
   const [recommendedProviderId, setRecommendedProviderId] = useState<string | null>(null);
   const {
     providers,
@@ -162,7 +164,7 @@ export function ProvidersSettings() {
             <Key className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">{t('aiProviders.empty.title')}</h3>
             <p className="text-muted-foreground text-center mb-4">
-              {t('aiProviders.empty.desc')}
+              {t('aiProviders.empty.desc', { appName })}
             </p>
             <Button onClick={() => setShowAddDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />

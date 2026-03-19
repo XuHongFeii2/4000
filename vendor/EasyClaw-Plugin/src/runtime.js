@@ -6,7 +6,7 @@ export function setClawXImRuntime(next) {
 
 export function getClawXImRuntime() {
   if (!runtime) {
-    throw new Error("龙虾APP运行时未初始化");
+    throw new Error("openclaw中文版运行时未初始化");
   }
   return runtime;
 }

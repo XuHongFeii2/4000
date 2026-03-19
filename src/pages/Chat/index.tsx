@@ -15,7 +15,7 @@ import { ChatInput } from './ChatInput';
 import { ChatToolbar } from './ChatToolbar';
 import { extractImages, extractText, extractThinking, extractToolUse } from './message-utils';
 import { useTranslation } from 'react-i18next';
-import { appNameForLocale } from '@/config/app-config';
+import { WS_URL, appNameForLocale } from '@/config/app-config';
 
 export function Chat() {
   const { t } = useTranslation('chat');

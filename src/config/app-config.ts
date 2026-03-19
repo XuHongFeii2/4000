@@ -1,6 +1,6 @@
-export const APP_NAME_ZH = import.meta.env.VITE_APP_NAME_ZH ?? 'easyclaw';
-export const APP_NAME_EN = import.meta.env.VITE_APP_NAME_EN ?? 'easyclaw';
-export const APP_NAME_JA = import.meta.env.VITE_APP_NAME_JA ?? 'easyclaw';
+export const APP_NAME_ZH = import.meta.env.VITE_APP_NAME_ZH ?? 'openclaw中文版';
+export const APP_NAME_EN = import.meta.env.VITE_APP_NAME_EN ?? 'openclaw(chinese)';
+export const APP_NAME_JA = import.meta.env.VITE_APP_NAME_JA ?? 'openclaw(chinese)';
 export const WS_URL = import.meta.env.VITE_WS_URL ?? 'http://easyclaw.bar:5000';
 
 export function appNameForLocale(locale?: string): string {
@@ -9,4 +9,3 @@ export function appNameForLocale(locale?: string): string {
   if (lang === 'ja') return APP_NAME_JA;
   return APP_NAME_EN;
 }
-

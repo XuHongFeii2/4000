@@ -55,13 +55,13 @@
     },
     "meta": {
         "easyclaw": {
-            "description": "Feishu のように QR コードで EasyClaw と ClawX アプリを紐付けし、ユーザーには URL や秘密情報を見せません",
+            "description": "QR コードで 龙虾APP を紐付けし、ユーザーには URL や秘密情報を見せません",
             "docsUrl": "http://app.easyclaw.bar/docs#/binding",
             "fields": {},
             "instructions": [
                 "龙虾APP を開くと自動的にペアリング QR コードが生成されます",
                 "アプリで「ロボットを追加」を押してこの QR コードを読み取ります",
-                "読み取り後、EasyClaw に device_id と device_token が自動保存されます"
+                "読み取り後、龙虾APP に device_id と device_token が自動保存されます"
             ]
         },
         "telegram": {

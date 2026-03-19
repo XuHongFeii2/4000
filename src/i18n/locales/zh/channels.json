@@ -55,13 +55,13 @@
     },
     "meta": {
         "easyclaw": {
-            "description": "像飞书一样通过二维码把 EasyClaw 和 龙虾APP 绑定，用户无需填写地址或密钥",
+            "description": "通过二维码绑定 龙虾APP，用户无需填写地址或密钥",
             "docsUrl": "http://app.easyclaw.bar/docs#/binding",
             "fields": {},
             "instructions": [
                 "打开 龙虾APP 后会自动生成一个绑定二维码",
                 "在 App 中点击添加机器人，然后扫一扫这个二维码",
-                "扫码成功后会自动下发 device_id 和 device_token 到 EasyClaw"
+                "扫码成功后会自动下发 device_id 和 device_token 到 龙虾APP"
             ]
         },
         "telegram": {

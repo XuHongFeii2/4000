@@ -21,12 +21,86 @@ import 'zx/globals';
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT = path.join(ROOT, 'build', 'openclaw');
 const NODE_MODULES = path.join(ROOT, 'node_modules');
+const BUILTIN_SKILLS_SOURCES = [
+  path.join(ROOT, 'vendor', 'openclaw-skills'),
+  path.resolve(ROOT, '..', '..', 'shuziren-skill', 'skills'),
+];
+const SKILL_MANIFEST_NAMES = ['SKILL.md', 'skill.md'];
 
 // On Windows, pnpm virtual store paths can exceed MAX_PATH (260 chars).
 function normWin(p) {
   if (process.platform !== 'win32') return p;
   if (p.startsWith('\\\\?\\')) return p;
   return '\\\\?\\' + p.replace(/\//g, '\\');
+}
+
+function resolveBuiltinSkillsSource() {
+  return BUILTIN_SKILLS_SOURCES.find(sourceDir => fs.existsSync(sourceDir)) || null;
+}
+
+function normalizeSkillManifestCase(skillDir) {
+  const manifestEntry = fs.readdirSync(skillDir).find(fileName => fileName.toLowerCase() === 'skill.md');
+  if (!manifestEntry || manifestEntry === 'SKILL.md') {
+    return;
+  }
+
+  const currentManifest = path.join(skillDir, manifestEntry);
+  const upperManifest = path.join(skillDir, 'SKILL.md');
+
+  if (process.platform === 'win32') {
+    const tempManifest = path.join(skillDir, '__skill_manifest__.tmp');
+    fs.renameSync(currentManifest, tempManifest);
+    fs.renameSync(tempManifest, upperManifest);
+    return;
+  }
+
+  fs.renameSync(currentManifest, upperManifest);
+}
+
+function copyBuiltinSkills(outputDir) {
+  const sourceDir = resolveBuiltinSkillsSource();
+  if (!sourceDir) {
+    echo`ERROR: builtin skills source not found. Checked: ${BUILTIN_SKILLS_SOURCES.join(', ')}`;
+    process.exit(1);
+  }
+
+  const outputSkillsDir = path.join(outputDir, 'skills');
+  fs.mkdirSync(outputSkillsDir, { recursive: true });
+
+  let copiedCount = 0;
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const sourceSkillDir = path.join(sourceDir, entry.name);
+    const hasManifest = SKILL_MANIFEST_NAMES.some(fileName =>
+      fs.existsSync(path.join(sourceSkillDir, fileName))
+    );
+    if (!hasManifest) continue;
+
+    const outputSkillDir = path.join(outputSkillsDir, entry.name);
+    if (fs.existsSync(outputSkillDir)) {
+      fs.rmSync(outputSkillDir, { recursive: true, force: true });
+    }
+
+    fs.cpSync(sourceSkillDir, outputSkillDir, {
+      recursive: true,
+      dereference: true,
+      filter: sourcePath => {
+        const baseName = path.basename(sourcePath);
+        return baseName !== '__pycache__' && path.extname(sourcePath) !== '.pyc';
+      },
+    });
+
+    normalizeSkillManifestCase(outputSkillDir);
+    copiedCount++;
+  }
+
+  if (copiedCount === 0) {
+    echo`ERROR: no builtin skills were copied from ${sourceDir}`;
+    process.exit(1);
+  }
+
+  echo`   Bundled ${copiedCount} builtin skill(s) from ${sourceDir}`;
 }
 
 echo`📦 Bundling openclaw for electron-builder...`;
@@ -50,6 +124,7 @@ fs.mkdirSync(OUTPUT, { recursive: true });
 // 3. Copy openclaw package itself to OUTPUT root
 echo`   Copying openclaw package...`;
 fs.cpSync(openclawReal, OUTPUT, { recursive: true, dereference: true });
+copyBuiltinSkills(OUTPUT);
 
 // 4. Recursively collect ALL transitive dependencies via pnpm virtual store BFS
 //

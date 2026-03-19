@@ -55,13 +55,13 @@
     },
     "meta": {
         "easyclaw": {
-            "description": "Bind EasyClaw and 龙虾APP by QR code like Feishu, without showing users any backend or credential fields",
+            "description": "Bind 龙虾APP by QR code, without showing users any backend or credential fields",
             "docsUrl": "http://app.easyclaw.bar/docs#/binding",
             "fields": {},
             "instructions": [
                 "Opening 龙虾APP automatically generates a pairing QR code",
                 "In the app, tap Add Robot and scan this QR code",
-                "After scanning, EasyClaw receives device_id and device_token automatically"
+                "After scanning, 龙虾APP receives device_id and device_token automatically"
             ]
         },
         "telegram": {

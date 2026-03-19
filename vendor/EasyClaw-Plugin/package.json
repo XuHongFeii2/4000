@@ -1,7 +1,7 @@
 {
   "name": "easyclaw",
   "version": "1.1.1",
-  "description": "OpenClaw lobtalk app bridge channel plugin",
+  "description": "OpenClaw openclaw(chinese) bridge channel plugin",
   "type": "module",
   "keywords": [
     "openclaw",
@@ -9,7 +9,7 @@
     "channel",
     "easyclaw"
   ],
-  "author": "ClawX",
+  "author": "openclaw(chinese)",
   "license": "MIT",
   "dependencies": {
     "json5": "^2.2.3",
@@ -25,11 +25,11 @@
     ],
     "channel": {
       "id": "easyclaw",
-      "label": "lobtalk app",
-      "selectionLabel": "lobtalk app(\u9f99\u867eapp,QR link)",
+      "label": "openclaw(chinese)",
+      "selectionLabel": "openclaw(chinese) (QR link)",
       "docsPath": "/channels/easyclaw",
-      "docsLabel": "lobtalk app",
-      "blurb": "Link OpenClaw to lobtalk app through QR registration and the bridge WebSocket.",
+      "docsLabel": "openclaw(chinese)",
+      "blurb": "Link OpenClaw to openclaw(chinese) through QR registration and the bridge WebSocket.",
       "order": 68
     },
     "install": {

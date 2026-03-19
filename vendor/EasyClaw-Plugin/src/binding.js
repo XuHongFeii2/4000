@@ -239,7 +239,7 @@ export async function startBindingQrLogin({ accountId, force, timeoutMs, serverU
     if (existing) {
       return {
         qrDataUrl: existing.qrDataUrl,
-        message: "Scan the QR code in the 龙虾APP mobile app.",
+        message: "Scan the QR code in the openclaw(chinese) mobile app.",
         rawPayload: existing.rawPayload,
       };
     }
@@ -248,7 +248,7 @@ export async function startBindingQrLogin({ accountId, force, timeoutMs, serverU
   const resolvedServerUrl = normalizeServerUrl(serverUrl) || resolveServerUrl();
   if (!resolvedServerUrl) {
     throw new Error(
-      "Missing 龙虾APP server URL. Set EASYCLAW_SERVER_URL or channels.easyclaw.serverUrl first.",
+      "Missing openclaw(chinese) server URL. Set EASYCLAW_SERVER_URL or channels.easyclaw.serverUrl first.",
     );
   }
 
@@ -267,7 +267,7 @@ export async function startBindingQrLogin({ accountId, force, timeoutMs, serverU
 
   return {
     qrDataUrl,
-    message: "Scan the QR code in the 龙虾APP mobile app.",
+    message: "Scan the QR code in the openclaw(chinese) mobile app.",
     rawPayload,
   };
 }
@@ -278,7 +278,7 @@ export async function waitForBindingQrLogin({ accountId, timeoutMs } = {}) {
   if (!active) {
     return {
       connected: false,
-      message: "No active 龙虾APP QR login session. Generate a QR code first.",
+      message: "No active openclaw(chinese) QR login session. Generate a QR code first.",
     };
   }
 
@@ -315,7 +315,7 @@ export async function waitForBindingQrLogin({ accountId, timeoutMs } = {}) {
         clearActiveBinding(resolvedAccountId);
         return {
           connected: true,
-          message: "龙虾APP binding completed.",
+          message: "openclaw(chinese) binding completed.",
         };
       }
 
@@ -346,7 +346,7 @@ export async function waitForBindingQrLogin({ accountId, timeoutMs } = {}) {
 
 export async function loginWithTerminalQr({ accountId, runtime, timeoutMs, serverUrl }) {
   const started = await startBindingQrLogin({ accountId, force: true, timeoutMs, serverUrl });
-  runtime.log?.("Scan this QR code with the 龙虾APP mobile app:");
+  runtime.log?.("Scan this QR code with the openclaw(chinese) mobile app:");
   qrcodeTerminal.generate(started.rawPayload, { small: true });
   runtime.log?.(`If the QR code does not render, open: ${started.rawPayload}`);
 

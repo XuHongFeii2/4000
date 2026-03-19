@@ -19,7 +19,7 @@ import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
 import { io } from 'socket.io-client';
-import { WS_URL } from './config/app-config';
+import { WS_URL, appNameForLocale } from './config/app-config';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 
@@ -167,11 +167,11 @@ function App() {
   useEffect(() => {
     // Socket event listeners
     socket.on('connect', () => {
-      console.log('Connected to EasyClaw Server:', socket.id);
+      console.log(`Connected to ${appNameForLocale(language || i18n.language)} Server:`, socket.id);
     });
 
     socket.on('disconnect', () => {
-      console.log('Disconnected from EasyClaw Server');
+      console.log(`Disconnected from ${appNameForLocale(language || i18n.language)} Server`);
     });
 
     socket.on('status', (data) => {
@@ -183,7 +183,7 @@ function App() {
       socket.off('disconnect');
       socket.off('status');
     };
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     initSettings();
@@ -194,9 +194,10 @@ function App() {
     if (language && language !== i18n.language) {
       i18n.changeLanguage(language);
     }
-    // Update tray tooltip to current app name
+
     try {
       const name = appNameForLocale(language || i18n.language);
+      document.title = name;
       // best-effort, ignore failures on non-electron environments
       window.electron?.ipcRenderer?.invoke('tray:setTooltip', name).catch(() => {});
     } catch {}

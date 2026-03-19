@@ -47,13 +47,13 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
 function localizeEasyClawCopy(type: ChannelType | null, text: string, language: string): string {
+  void language;
+
   if (type !== 'easyclaw') {
     return text;
   }
 
-  return language.toLowerCase().startsWith('zh')
-    ? text
-    : text.replace(/龙虾APP/g, 'lobtalk app');
+  return text.replace(/EasyClaw|easyclaw|openclaw中文版|openclaw\(chinese\)|ClawX|lobtalk app/g, '龙虾APP');
 }
 
 export function Channels() {
@@ -386,6 +386,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
 
   const language = i18n.resolvedLanguage ?? i18n.language;
   const isChinese = language.toLowerCase().startsWith('zh');
+  const easyClawDisplayName = getChannelDisplayName('easyclaw', language);
   const meta: ChannelMeta | null = selectedType ? getChannelMeta(selectedType, language) : null;
 
   // Load existing config when a channel type is selected
@@ -507,7 +508,6 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
             botName?: string;
             userEmail?: string;
           };
-          const easyClawDisplayName = getChannelDisplayName('easyclaw', language);
           const channelDisplayName = data.botName || easyClawDisplayName;
           const saveResult = await window.electron.ipcRenderer.invoke(
             'channel:saveConfig',
@@ -608,7 +608,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
           'easyclaw',
           {
             enabled: true,
-            name: data.botName || '龙虾APP',
+            name: data.botName || easyClawDisplayName,
             serverUrl: data.serverUrl,
             deviceId: data.deviceId,
             deviceToken: data.deviceToken,
@@ -617,18 +617,18 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
         ) as { success?: boolean; error?: string };
 
         if (!saveResult?.success) {
-          throw new Error(saveResult?.error || 'Failed to save 龙虾APP config');
+          throw new Error(saveResult?.error || `Failed to save ${easyClawDisplayName} config`);
         }
 
         await addChannel({
           type: 'easyclaw',
-          name: data.botName || '龙虾APP',
+          name: data.botName || easyClawDisplayName,
         });
 
         toast.success(
           data.userEmail
-            ? `龙虾APP 已绑定到 ${data.userEmail}`
-            : '龙虾APP 绑定成功'
+            ? `${easyClawDisplayName} 已绑定到 ${data.userEmail}`
+            : `${easyClawDisplayName} 绑定成功`
         );
         onChannelAdded();
       } catch (error) {
@@ -663,7 +663,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
     window.electron.ipcRenderer.invoke('channel:requestQrLogin', selectedType).then((result) => {
       const payload = result as { success?: boolean; error?: string };
       if (!payload?.success) {
-        throw new Error(payload?.error || 'Failed to start 龙虾APP binding');
+        throw new Error(payload?.error || `Failed to start ${easyClawDisplayName} binding`);
       }
     }).catch((error) => {
       toast.error(String(error));

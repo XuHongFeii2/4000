@@ -2,7 +2,6 @@
  * Channel Type Definitions
  * Types for messaging channels (WhatsApp, Telegram, etc.)
  */
-
 /**
  * Supported channel types
  */
@@ -525,15 +524,18 @@ export function getAllChannels(): ChannelType[] {
 }
 
 export function getChannelDisplayName(type: ChannelType, language?: string): string {
+  void language;
+
   if (type !== 'easyclaw') {
     return CHANNEL_NAMES[type];
   }
 
-  const normalizedLanguage = (language || 'en').toLowerCase();
-  return normalizedLanguage.startsWith('zh') ? '龙虾APP' : 'lobtalk app';
+  return '龙虾APP';
 }
 
 export function getChannelMeta(type: ChannelType, language?: string): ChannelMeta {
+  void language;
+
   if (type !== 'easyclaw') {
     return CHANNEL_META[type];
   }

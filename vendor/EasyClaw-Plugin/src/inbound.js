@@ -211,7 +211,7 @@ export async function handleBridgeInbound({
           eventId: event.event_id,
           content: core.channel.pairing.buildPairingReply({
             channel: CHANNEL_ID,
-            idLine: `Your ClawX user id: ${senderId}`,
+            idLine: `Your openclaw(chinese) user id: ${senderId}`,
             code,
           }),
           msgType: "text",
@@ -258,7 +258,7 @@ export async function handleBridgeInbound({
     sessionKey: route.sessionKey,
   });
   const body = core.channel.reply.formatAgentEnvelope({
-    channel: "龙虾APP",
+    channel: "openclaw中文版",
     from: fromLabel,
     timestamp: Date.now(),
     previousTimestamp,

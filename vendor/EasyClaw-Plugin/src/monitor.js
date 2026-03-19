@@ -81,7 +81,7 @@ class BridgeTransport {
 
   async sendJson(payload) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error("龙虾APP桥接 WebSocket 未连接");
+      throw new Error("openclaw中文版桥接 WebSocket 未连接");
     }
 
     await new Promise((resolve, reject) => {
@@ -113,7 +113,7 @@ class BridgeTransport {
     if (!response.ok) {
       const errorPayload = await parseJsonResponse(response);
       throw new Error(
-        `龙虾APP回复失败: ${response.status} ${errorPayload.detail ?? response.statusText}`,
+        `openclaw中文版回复失败: ${response.status} ${errorPayload.detail ?? response.statusText}`,
       );
     }
   }
@@ -131,7 +131,7 @@ class BridgeTransport {
     if (!response.ok) {
       const errorPayload = await parseJsonResponse(response);
       throw new Error(
-        `龙虾APP入站轮询失败: ${response.status} ${errorPayload.detail ?? response.statusText}`,
+        `openclaw中文版入站轮询失败: ${response.status} ${errorPayload.detail ?? response.statusText}`,
       );
     }
 
@@ -281,7 +281,7 @@ export async function monitorBridgeProvider({
 }) {
   const account = resolveBridgeAccount({ cfg: config, accountId });
   if (!account.enabled || !account.configured) {
-    throw new Error(`龙虾APP账号 "${account.accountId}" 未配置或已禁用`);
+    throw new Error(`openclaw中文版账号 "${account.accountId}" 未配置或已禁用`);
   }
 
   const transport = new BridgeTransport(account, { setStatus, runtime });

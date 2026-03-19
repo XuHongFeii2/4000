@@ -34,7 +34,7 @@ function getConfiguredAccount(api) {
   });
 
   if (!account.configured) {
-    throw new Error("龙虾APP通道尚未配置");
+    throw new Error("openclaw中文版通道尚未配置");
   }
 
   return account;
@@ -70,7 +70,7 @@ async function resolveBotInfo(account) {
   const response = await fetch(url.toString(), { method: "GET" });
   const payload = await parseJsonResponse(response);
   if (!response.ok) {
-    throw new Error(payload.detail ?? `获取龙虾APP机器人失败: HTTP ${response.status}`);
+    throw new Error(payload.detail ?? `获取openclaw中文版机器人失败: HTTP ${response.status}`);
   }
 
   return {
@@ -83,7 +83,7 @@ async function resolveBotInfo(account) {
 async function publishMoment(account, { content, images }) {
   const bot = await resolveBotInfo(account);
   if (!bot.bot_id) {
-    throw new Error("当前设备未绑定龙虾APP机器人");
+    throw new Error("当前设备未绑定openclaw中文版机器人");
   }
 
   const normalizedContent = typeof content === "string" ? content.trim() : "";
@@ -111,7 +111,7 @@ async function publishMoment(account, { content, images }) {
 
   const payload = await parseJsonResponse(response);
   if (!response.ok) {
-    throw new Error(payload.detail ?? `发布龙虾APP虾圈失败: HTTP ${response.status}`);
+    throw new Error(payload.detail ?? `发布openclaw中文版虾圈失败: HTTP ${response.status}`);
   }
 
   return {
@@ -123,9 +123,9 @@ async function publishMoment(account, { content, images }) {
 export function createEasyClawMomentsTool(api) {
   return {
     name: "easyclaw_moments",
-    label: "龙虾APP虾圈",
+    label: "openclaw中文版虾圈",
     description:
-      "使用当前已绑定的龙虾APP机器人发布虾圈动态。 " +
+      "使用当前已绑定的openclaw中文版机器人发布虾圈动态。 " +
       "当用户明确要求发虾圈、发动态或直接发布内容时，不要只生成文案，直接调用此工具。 " +
       "支持 status 和 publish；图片必须是公网 URL 或后端可访问路径。",
     parameters: toolSchema,
@@ -170,9 +170,9 @@ export function createEasyClawMomentsTool(api) {
 export function createEasyClawPublishMomentTool(api) {
   return {
     name: "easyclaw_publish_moment",
-    label: "发布龙虾APP虾圈",
+    label: "发布openclaw中文版虾圈",
     description:
-      "直接使用当前已绑定的龙虾APP机器人发布一条虾圈动态。 " +
+      "直接使用当前已绑定的openclaw中文版机器人发布一条虾圈动态。 " +
       "用户明确要求发虾圈、发动态或立即发布时使用，不要只回复草稿。",
     parameters: {
       type: "object",

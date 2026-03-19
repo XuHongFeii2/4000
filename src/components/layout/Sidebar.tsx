@@ -31,7 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useTranslation } from 'react-i18next';
 import { useEffect } from 'react';
-import { WS_URL } from '@/config/app-config';
+import { WS_URL, appNameForLocale } from '@/config/app-config';
 import wechatWorkImg from '@/assets/community/wechat-work.png';
 import dashangImg from '@/assets/community/dashang.jpg';
 
@@ -174,6 +174,7 @@ export function Sidebar() {
   };
 
   const [sessionToDelete, setSessionToDelete] = useState<{ key: string; label: string } | null>(null);
+  const appName = appNameForLocale(language);
 
   const navItems = [
     { to: '/cron', icon: <Clock className="h-5 w-5" />, label: t('sidebar.cronTasks') },
@@ -453,7 +454,7 @@ export function Sidebar() {
                 {language === 'zh' ? '欢迎加入龙虾学习营' : 'Welcome to Lobster Learning Camp'}
               </h3>
               <p className="text-gray-400">
-                {language === 'zh' ? '24小时提供 EasyClaw 远程配置服务' : '24/7 EasyClaw remote configuration service'}
+                {language === 'zh' ? `24小时提供 ${appName} 远程配置服务` : `24/7 ${appName} remote configuration service`}
               </p>
             </div>
             
@@ -523,7 +524,7 @@ export function Sidebar() {
                   </div>
                   <div className="flex flex-col text-left">
                       <span className="text-xs text-gray-500">{language === 'zh' ? '企业微信 (悬停扫码)' : 'WeChat Work (Hover to Scan)'}</span>
-                      <span className="font-mono text-gray-200 truncate select-all">{language === 'zh' ? 'EasyClaw 官方客服' : 'EasyClaw Official Support'}</span>
+                      <span className="font-mono text-gray-200 truncate select-all">{language === 'zh' ? `${appName} 官方客服` : `${appName} Official Support`}</span>
                   </div>
                 </div>
                 
@@ -531,7 +532,7 @@ export function Sidebar() {
                 <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[100]">
                    <div className="bg-white p-2 rounded-xl shadow-2xl w-96 border-4 border-primary/20">
                      <img src={wechatWorkImg} alt="WeChat Work QR" className="w-full h-auto rounded-lg" />
-                     <div className="text-center text-gray-800 mt-2 font-bold">{language === 'zh' ? 'EasyClaw 客服' : 'EasyClaw Support'}</div>
+                     <div className="text-center text-gray-800 mt-2 font-bold">{language === 'zh' ? `${appName} 客服` : `${appName} Support`}</div>
                    </div>
                 </div>
               </div>
