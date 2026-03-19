@@ -14,14 +14,77 @@ import { proxyAwareFetch } from './proxy-fetch';
 
 const OPENCLAW_DIR = join(homedir(), '.openclaw');
 const CONFIG_FILE = join(OPENCLAW_DIR, 'openclaw.json');
+const EASYCLAW_CHANNEL_ID = 'easyclaw';
+const LEGACY_EASYCLAW_CHANNEL_ID = 'clawx-im';
 
 // Channels that are managed as plugins (config goes under plugins.entries, not channels)
 const PLUGIN_CHANNELS = ['whatsapp'];
+
+function ensureAllowedPlugin(config: OpenClawConfig, pluginId: string): void {
+    if (!config.plugins) {
+        config.plugins = {};
+    }
+    config.plugins.enabled = true;
+    const allow = Array.isArray(config.plugins.allow)
+        ? config.plugins.allow as string[]
+        : [];
+    if (!allow.includes(pluginId)) {
+        config.plugins.allow = [...allow, pluginId];
+    }
+}
+
+function ensurePluginEntryEnabled(
+    config: OpenClawConfig,
+    pluginId: string,
+    enabled: boolean
+): void {
+    if (!config.plugins) {
+        config.plugins = {};
+    }
+    if (!config.plugins.entries) {
+        config.plugins.entries = {};
+    }
+    config.plugins.entries[pluginId] = {
+        ...config.plugins.entries[pluginId],
+        enabled,
+    };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 
 async function fileExists(p: string): Promise<boolean> {
     try { await access(p, constants.F_OK); return true; } catch { return false; }
+}
+
+function isEasyClawChannel(channelType: string): boolean {
+    return channelType === EASYCLAW_CHANNEL_ID || channelType === LEGACY_EASYCLAW_CHANNEL_ID;
+}
+
+function normalizeChannelType(channelType: string): string {
+    return isEasyClawChannel(channelType) ? EASYCLAW_CHANNEL_ID : channelType;
+}
+
+function getStoredChannelConfig(config: OpenClawConfig, channelType: string): ChannelConfigData | undefined {
+    const normalizedType = normalizeChannelType(channelType);
+    if (normalizedType === EASYCLAW_CHANNEL_ID) {
+        return config.channels?.[EASYCLAW_CHANNEL_ID] ?? config.channels?.[LEGACY_EASYCLAW_CHANNEL_ID];
+    }
+    return config.channels?.[normalizedType];
+}
+
+function deleteStoredChannelConfig(config: OpenClawConfig, channelType: string): void {
+    if (!config.channels) return;
+
+    const normalizedType = normalizeChannelType(channelType);
+    delete config.channels[normalizedType];
+
+    if (normalizedType === EASYCLAW_CHANNEL_ID) {
+        delete config.channels[LEGACY_EASYCLAW_CHANNEL_ID];
+    }
+
+    if (Object.keys(config.channels).length === 0) {
+        delete config.channels;
+    }
 }
 
 // ── Types ────────────────────────────────────────────────────────
@@ -86,56 +149,39 @@ export async function saveChannelConfig(
     config: ChannelConfigData
 ): Promise<void> {
     const currentConfig = await readOpenClawConfig();
+    const normalizedType = normalizeChannelType(channelType);
 
-    // DingTalk is a channel plugin; make sure it's explicitly allowed.
-    // Newer OpenClaw versions may not load non-bundled plugins when allowlist is empty.
-    if (channelType === 'dingtalk') {
-        if (!currentConfig.plugins) {
-            currentConfig.plugins = {};
-        }
-        currentConfig.plugins.enabled = true;
-        const allow = Array.isArray(currentConfig.plugins.allow)
-            ? currentConfig.plugins.allow as string[]
-            : [];
-        if (!allow.includes('dingtalk')) {
-            currentConfig.plugins.allow = [...allow, 'dingtalk'];
-        }
+    if (normalizedType === 'dingtalk') {
+        ensureAllowedPlugin(currentConfig, 'dingtalk');
     }
 
-    // DingTalk is a channel plugin; make sure it's explicitly allowed.
-    // Newer OpenClaw versions may not load non-bundled plugins when allowlist is empty.
-    if (channelType === 'dingtalk') {
-        if (!currentConfig.plugins) {
-            currentConfig.plugins = {};
-        }
-        currentConfig.plugins.enabled = true;
-        const allow = Array.isArray(currentConfig.plugins.allow)
-            ? currentConfig.plugins.allow as string[]
-            : [];
-        if (!allow.includes('dingtalk')) {
-            currentConfig.plugins.allow = [...allow, 'dingtalk'];
+    if (normalizedType === EASYCLAW_CHANNEL_ID) {
+        ensureAllowedPlugin(currentConfig, EASYCLAW_CHANNEL_ID);
+        ensurePluginEntryEnabled(currentConfig, EASYCLAW_CHANNEL_ID, config.enabled ?? true);
+        if (currentConfig.plugins?.entries?.[LEGACY_EASYCLAW_CHANNEL_ID]) {
+            delete currentConfig.plugins.entries[LEGACY_EASYCLAW_CHANNEL_ID];
         }
     }
 
     // Plugin-based channels (e.g. WhatsApp) go under plugins.entries, not channels
-    if (PLUGIN_CHANNELS.includes(channelType)) {
+    if (PLUGIN_CHANNELS.includes(normalizedType)) {
         if (!currentConfig.plugins) {
             currentConfig.plugins = {};
         }
         if (!currentConfig.plugins.entries) {
             currentConfig.plugins.entries = {};
         }
-        currentConfig.plugins.entries[channelType] = {
-            ...currentConfig.plugins.entries[channelType],
+        currentConfig.plugins.entries[normalizedType] = {
+            ...currentConfig.plugins.entries[normalizedType],
             enabled: config.enabled ?? true,
         };
         await writeOpenClawConfig(currentConfig);
         logger.info('Plugin channel config saved', {
-            channelType,
+            channelType: normalizedType,
             configFile: CONFIG_FILE,
-            path: `plugins.entries.${channelType}`,
+            path: `plugins.entries.${normalizedType}`,
         });
-        console.log(`Saved plugin channel config for ${channelType}`);
+        console.log(`Saved plugin channel config for ${normalizedType}`);
         return;
     }
 
@@ -147,7 +193,7 @@ export async function saveChannelConfig(
     let transformedConfig: ChannelConfigData = { ...config };
 
     // Special handling for Discord: convert guildId/channelId to complete structure
-    if (channelType === 'discord') {
+    if (normalizedType === 'discord') {
         const { guildId, channelId, ...restConfig } = config;
         transformedConfig = { ...restConfig };
 
@@ -183,7 +229,7 @@ export async function saveChannelConfig(
     }
 
     // Special handling for Telegram: convert allowedUsers string to allowlist array
-    if (channelType === 'telegram') {
+    if (normalizedType === 'telegram') {
         const { allowedUsers, ...restConfig } = config;
         transformedConfig = { ...restConfig };
 
@@ -199,8 +245,8 @@ export async function saveChannelConfig(
     }
 
     // Special handling for Feishu: default to open DM policy with wildcard allowlist
-    if (channelType === 'feishu') {
-        const existingConfig = currentConfig.channels[channelType] || {};
+    if (normalizedType === 'feishu') {
+        const existingConfig = getStoredChannelConfig(currentConfig, normalizedType) || {};
         transformedConfig.dmPolicy = transformedConfig.dmPolicy ?? existingConfig.dmPolicy ?? 'open';
 
         let allowFrom = transformedConfig.allowFrom ?? existingConfig.allowFrom ?? ['*'];
@@ -216,26 +262,29 @@ export async function saveChannelConfig(
     }
 
     // Merge with existing config
-    currentConfig.channels[channelType] = {
-        ...currentConfig.channels[channelType],
+    currentConfig.channels[normalizedType] = {
+        ...(getStoredChannelConfig(currentConfig, normalizedType) ?? {}),
         ...transformedConfig,
         enabled: transformedConfig.enabled ?? true,
     };
+    if (normalizedType === EASYCLAW_CHANNEL_ID && currentConfig.channels[LEGACY_EASYCLAW_CHANNEL_ID]) {
+        delete currentConfig.channels[LEGACY_EASYCLAW_CHANNEL_ID];
+    }
 
     await writeOpenClawConfig(currentConfig);
     logger.info('Channel config saved', {
-        channelType,
+        channelType: normalizedType,
         configFile: CONFIG_FILE,
         rawKeys: Object.keys(config),
         transformedKeys: Object.keys(transformedConfig),
-        enabled: currentConfig.channels[channelType]?.enabled,
+        enabled: currentConfig.channels[normalizedType]?.enabled,
     });
-    console.log(`Saved channel config for ${channelType}`);
+    console.log(`Saved channel config for ${normalizedType}`);
 }
 
 export async function getChannelConfig(channelType: string): Promise<ChannelConfigData | undefined> {
     const config = await readOpenClawConfig();
-    return config.channels?.[channelType];
+    return getStoredChannelConfig(config, channelType);
 }
 
 export async function getChannelFormValues(channelType: string): Promise<Record<string, string> | undefined> {
@@ -285,14 +334,23 @@ export async function getChannelFormValues(channelType: string): Promise<Record<
 
 export async function deleteChannelConfig(channelType: string): Promise<void> {
     const currentConfig = await readOpenClawConfig();
+    const normalizedType = normalizeChannelType(channelType);
 
-    if (currentConfig.channels?.[channelType]) {
-        delete currentConfig.channels[channelType];
+    if (getStoredChannelConfig(currentConfig, normalizedType)) {
+        deleteStoredChannelConfig(currentConfig, normalizedType);
+        if (normalizedType === EASYCLAW_CHANNEL_ID) {
+            if (currentConfig.plugins?.entries?.[EASYCLAW_CHANNEL_ID]) {
+                delete currentConfig.plugins.entries[EASYCLAW_CHANNEL_ID];
+            }
+            if (currentConfig.plugins?.entries?.[LEGACY_EASYCLAW_CHANNEL_ID]) {
+                delete currentConfig.plugins.entries[LEGACY_EASYCLAW_CHANNEL_ID];
+            }
+        }
         await writeOpenClawConfig(currentConfig);
-        console.log(`Deleted channel config for ${channelType}`);
-    } else if (PLUGIN_CHANNELS.includes(channelType)) {
-        if (currentConfig.plugins?.entries?.[channelType]) {
-            delete currentConfig.plugins.entries[channelType];
+        console.log(`Deleted channel config for ${normalizedType}`);
+    } else if (PLUGIN_CHANNELS.includes(normalizedType)) {
+        if (currentConfig.plugins?.entries?.[normalizedType]) {
+            delete currentConfig.plugins.entries[normalizedType];
             if (Object.keys(currentConfig.plugins.entries).length === 0) {
                 delete currentConfig.plugins.entries;
             }
@@ -300,12 +358,12 @@ export async function deleteChannelConfig(channelType: string): Promise<void> {
                 delete currentConfig.plugins;
             }
             await writeOpenClawConfig(currentConfig);
-            console.log(`Deleted plugin channel config for ${channelType}`);
+            console.log(`Deleted plugin channel config for ${normalizedType}`);
         }
     }
 
     // Special handling for WhatsApp credentials
-    if (channelType === 'whatsapp') {
+    if (normalizedType === 'whatsapp') {
         try {
             const whatsappDir = join(homedir(), '.openclaw', 'credentials', 'whatsapp');
             if (await fileExists(whatsappDir)) {
@@ -323,9 +381,13 @@ export async function listConfiguredChannels(): Promise<string[]> {
     const channels: string[] = [];
 
     if (config.channels) {
-        channels.push(...Object.keys(config.channels).filter(
-            (channelType) => config.channels![channelType]?.enabled !== false
-        ));
+        for (const channelType of Object.keys(config.channels)) {
+            if (config.channels[channelType]?.enabled === false) continue;
+            const normalizedType = normalizeChannelType(channelType);
+            if (!channels.includes(normalizedType)) {
+                channels.push(normalizedType);
+            }
+        }
     }
 
     // Check for WhatsApp credentials directory
@@ -356,22 +418,37 @@ export async function listConfiguredChannels(): Promise<string[]> {
 
 export async function setChannelEnabled(channelType: string, enabled: boolean): Promise<void> {
     const currentConfig = await readOpenClawConfig();
+    const normalizedType = normalizeChannelType(channelType);
 
-    if (PLUGIN_CHANNELS.includes(channelType)) {
+    if (PLUGIN_CHANNELS.includes(normalizedType)) {
         if (!currentConfig.plugins) currentConfig.plugins = {};
         if (!currentConfig.plugins.entries) currentConfig.plugins.entries = {};
-        if (!currentConfig.plugins.entries[channelType]) currentConfig.plugins.entries[channelType] = {};
-        currentConfig.plugins.entries[channelType].enabled = enabled;
+        if (!currentConfig.plugins.entries[normalizedType]) currentConfig.plugins.entries[normalizedType] = {};
+        currentConfig.plugins.entries[normalizedType].enabled = enabled;
         await writeOpenClawConfig(currentConfig);
-        console.log(`Set plugin channel ${channelType} enabled: ${enabled}`);
+        console.log(`Set plugin channel ${normalizedType} enabled: ${enabled}`);
         return;
     }
 
+    if (normalizedType === EASYCLAW_CHANNEL_ID) {
+        ensureAllowedPlugin(currentConfig, EASYCLAW_CHANNEL_ID);
+        ensurePluginEntryEnabled(currentConfig, EASYCLAW_CHANNEL_ID, enabled);
+        if (currentConfig.plugins?.entries?.[LEGACY_EASYCLAW_CHANNEL_ID]) {
+            delete currentConfig.plugins.entries[LEGACY_EASYCLAW_CHANNEL_ID];
+        }
+    }
+
     if (!currentConfig.channels) currentConfig.channels = {};
-    if (!currentConfig.channels[channelType]) currentConfig.channels[channelType] = {};
-    currentConfig.channels[channelType].enabled = enabled;
+    const existingConfig = getStoredChannelConfig(currentConfig, normalizedType) ?? {};
+    currentConfig.channels[normalizedType] = {
+        ...existingConfig,
+        enabled,
+    };
+    if (normalizedType === EASYCLAW_CHANNEL_ID && currentConfig.channels[LEGACY_EASYCLAW_CHANNEL_ID]) {
+        delete currentConfig.channels[LEGACY_EASYCLAW_CHANNEL_ID];
+    }
     await writeOpenClawConfig(currentConfig);
-    console.log(`Set channel ${channelType} enabled: ${enabled}`);
+    console.log(`Set channel ${normalizedType} enabled: ${enabled}`);
 }
 
 // ── Validation ───────────────────────────────────────────────────
@@ -398,8 +475,57 @@ export async function validateChannelCredentials(
             return validateDiscordCredentials(config);
         case 'telegram':
             return validateTelegramCredentials(config);
+        case 'easyclaw':
+        case 'clawx-im':
+            return validateClawxCredentials(config);
         default:
             return { valid: true, errors: [], warnings: ['No online validation available for this channel type.'] };
+    }
+}
+
+async function validateClawxCredentials(
+    config: Record<string, string>
+): Promise<CredentialValidationResult> {
+    const serverUrl = config.serverUrl?.trim();
+    const deviceId = config.deviceId?.trim();
+    const deviceToken = config.deviceToken?.trim();
+    if (!serverUrl) {
+        return { valid: false, errors: ['Server URL is required'], warnings: [] };
+    }
+    if (!deviceId) {
+        return { valid: false, errors: ['Device ID is required'], warnings: [] };
+    }
+    if (!deviceToken) {
+        return { valid: false, errors: ['Device token is required'], warnings: [] };
+    }
+
+    let normalizedUrl: string;
+    try {
+        normalizedUrl = new URL(serverUrl).toString().replace(/\/+$/, '').replace(/\/api\/v1$/i, '');
+    } catch {
+        return { valid: false, errors: ['Server URL is invalid'], warnings: [] };
+    }
+
+    try {
+        const response = await proxyAwareFetch(`${normalizedUrl}/api/v1/openapi.json`);
+        if (!response.ok) {
+            return {
+                valid: false,
+                errors: [`龙虾APP backend is unreachable: ${response.status}`],
+                warnings: [],
+            };
+        }
+        return {
+            valid: true,
+            errors: [],
+            warnings: ['龙虾APP plugin is configured. Replies will be routed by the backend using the provided device credentials.'],
+        };
+    } catch (error) {
+        return {
+            valid: false,
+            errors: [`Connection error: ${error instanceof Error ? error.message : String(error)}`],
+            warnings: [],
+        };
     }
 }
 
@@ -511,6 +637,7 @@ async function validateTelegramCredentials(
 
 export async function validateChannelConfig(channelType: string): Promise<ValidationResult> {
     const { exec } = await import('child_process');
+    const normalizedType = normalizeChannelType(channelType);
 
     const result: ValidationResult = { valid: true, errors: [], warnings: [] };
 
@@ -538,32 +665,33 @@ export async function validateChannelConfig(channelType: string): Promise<Valida
         const lines = output.split('\n');
         for (const line of lines) {
             const lowerLine = line.toLowerCase();
-            if (lowerLine.includes(channelType) && lowerLine.includes('error')) {
+            if (lowerLine.includes(normalizedType) && lowerLine.includes('error')) {
                 result.errors.push(line.trim());
                 result.valid = false;
-            } else if (lowerLine.includes(channelType) && lowerLine.includes('warning')) {
+            } else if (lowerLine.includes(normalizedType) && lowerLine.includes('warning')) {
                 result.warnings.push(line.trim());
-            } else if (lowerLine.includes('unrecognized key') && lowerLine.includes(channelType)) {
+            } else if (lowerLine.includes('unrecognized key') && lowerLine.includes(normalizedType)) {
                 result.errors.push(line.trim());
                 result.valid = false;
             }
         }
 
         const config = await readOpenClawConfig();
-        if (!config.channels?.[channelType]) {
-            result.errors.push(`Channel ${channelType} is not configured`);
+        const storedConfig = getStoredChannelConfig(config, normalizedType);
+        if (!storedConfig) {
+            result.errors.push(`Channel ${normalizedType} is not configured`);
             result.valid = false;
-        } else if (!config.channels[channelType].enabled) {
-            result.warnings.push(`Channel ${channelType} is disabled`);
+        } else if (!storedConfig.enabled) {
+            result.warnings.push(`Channel ${normalizedType} is disabled`);
         }
 
-        if (channelType === 'discord') {
+        if (normalizedType === 'discord') {
             const discordConfig = config.channels?.discord;
             if (!discordConfig?.token) {
                 result.errors.push('Discord: Bot token is required');
                 result.valid = false;
             }
-        } else if (channelType === 'telegram') {
+        } else if (normalizedType === 'telegram') {
             const telegramConfig = config.channels?.telegram;
             if (!telegramConfig?.botToken) {
                 result.errors.push('Telegram: Bot token is required');
@@ -592,10 +720,10 @@ export async function validateChannelConfig(channelType: string): Promise<Valida
         } else {
             console.warn('Doctor command failed:', errorMessage);
             const config = await readOpenClawConfig();
-            if (config.channels?.[channelType]) {
+            if (getStoredChannelConfig(config, normalizedType)) {
                 result.valid = true;
             } else {
-                result.errors.push(`Channel ${channelType} is not configured`);
+                result.errors.push(`Channel ${normalizedType} is not configured`);
                 result.valid = false;
             }
         }

@@ -7,6 +7,7 @@
  * Supported channel types
  */
 export type ChannelType =
+  | 'easyclaw'
   | 'whatsapp'
   | 'dingtalk'
   | 'telegram'
@@ -78,6 +79,7 @@ export interface ChannelMeta {
  * Channel icons mapping
  */
 export const CHANNEL_ICONS: Record<ChannelType, string> = {
+  easyclaw: '🦞',
   whatsapp: '📱',
   dingtalk: '💬',
   telegram: '✈️',
@@ -96,6 +98,7 @@ export const CHANNEL_ICONS: Record<ChannelType, string> = {
  * Channel display names
  */
 export const CHANNEL_NAMES: Record<ChannelType, string> = {
+  easyclaw: '龙虾APP',
   whatsapp: 'WhatsApp',
   dingtalk: 'DingTalk',
   telegram: 'Telegram',
@@ -114,6 +117,21 @@ export const CHANNEL_NAMES: Record<ChannelType, string> = {
  * Channel metadata with configuration information
  */
 export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
+  easyclaw: {
+    id: 'easyclaw',
+    name: '龙虾APP',
+    icon: '🦞',
+    description: 'channels:meta.easyclaw.description',
+    connectionType: 'qr',
+    docsUrl: 'channels:meta.easyclaw.docsUrl',
+    configFields: [],
+    instructions: [
+      'channels:meta.easyclaw.instructions.0',
+      'channels:meta.easyclaw.instructions.1',
+      'channels:meta.easyclaw.instructions.2',
+    ],
+    isPlugin: true,
+  },
   dingtalk: {
     id: 'dingtalk',
     name: 'DingTalk',
@@ -496,7 +514,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
  * Get primary supported channels (non-plugin, commonly used)
  */
 export function getPrimaryChannels(): ChannelType[] {
-  return ['telegram', 'discord', 'whatsapp', 'dingtalk', 'feishu'];
+  return ['easyclaw', 'telegram', 'discord', 'whatsapp', 'dingtalk', 'feishu'];
 }
 
 /**
@@ -504,4 +522,24 @@ export function getPrimaryChannels(): ChannelType[] {
  */
 export function getAllChannels(): ChannelType[] {
   return Object.keys(CHANNEL_META) as ChannelType[];
+}
+
+export function getChannelDisplayName(type: ChannelType, language?: string): string {
+  if (type !== 'easyclaw') {
+    return CHANNEL_NAMES[type];
+  }
+
+  const normalizedLanguage = (language || 'en').toLowerCase();
+  return normalizedLanguage.startsWith('zh') ? '龙虾APP' : 'lobtalk app';
+}
+
+export function getChannelMeta(type: ChannelType, language?: string): ChannelMeta {
+  if (type !== 'easyclaw') {
+    return CHANNEL_META[type];
+  }
+
+  return {
+    ...CHANNEL_META[type],
+    name: getChannelDisplayName(type, language),
+  };
 }

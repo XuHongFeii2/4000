@@ -35,8 +35,8 @@ import { StatusBadge, type Status } from '@/components/common/StatusBadge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import {
   CHANNEL_ICONS,
-  CHANNEL_NAMES,
-  CHANNEL_META,
+  getChannelDisplayName,
+  getChannelMeta,
   getPrimaryChannels,
   type ChannelType,
   type Channel,
@@ -46,8 +46,18 @@ import {
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
+function localizeEasyClawCopy(type: ChannelType | null, text: string, language: string): string {
+  if (type !== 'easyclaw') {
+    return text;
+  }
+
+  return language.toLowerCase().startsWith('zh')
+    ? text
+    : text.replace(/龙虾APP/g, 'lobtalk app');
+}
+
 export function Channels() {
-  const { t } = useTranslation('channels');
+  const { t, i18n } = useTranslation('channels');
   const { channels, loading, error, fetchChannels, deleteChannel } = useChannelsStore();
   const gatewayStatus = useGatewayStore((state) => state.status);
 
@@ -229,7 +239,8 @@ export function Channels() {
         <CardContent>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {displayedChannelTypes.map((type) => {
-              const meta = CHANNEL_META[type];
+              const language = i18n.resolvedLanguage ?? i18n.language;
+              const meta = getChannelMeta(type, i18n.resolvedLanguage ?? i18n.language);
               const isConfigured = configuredTypes.includes(type);
               return (
                 <button
@@ -243,7 +254,7 @@ export function Channels() {
                   <span className="text-3xl">{meta.icon}</span>
                   <p className="font-medium mt-2">{meta.name}</p>
                   <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                    {meta.description}
+                    {localizeEasyClawCopy(type, t(meta.description), language)}
                   </p>
                   {isConfigured && (
                     <Badge className="absolute top-2 right-2 text-xs bg-green-600 hover:bg-green-600">
@@ -307,6 +318,8 @@ interface ChannelCardProps {
 }
 
 function ChannelCard({ channel, onDelete }: ChannelCardProps) {
+  const { i18n } = useTranslation('channels');
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -318,7 +331,7 @@ function ChannelCard({ channel, onDelete }: ChannelCardProps) {
             <div>
               <CardTitle className="text-base">{channel.name}</CardTitle>
               <CardDescription className="text-xs">
-                {CHANNEL_NAMES[channel.type]}
+                {getChannelDisplayName(channel.type, i18n.resolvedLanguage ?? i18n.language)}
               </CardDescription>
             </div>
           </div>
@@ -354,7 +367,7 @@ interface AddChannelDialogProps {
 }
 
 function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded }: AddChannelDialogProps) {
-  const { t } = useTranslation('channels');
+  const { t, i18n } = useTranslation('channels');
   const { addChannel } = useChannelsStore();
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [channelName, setChannelName] = useState('');
@@ -371,7 +384,9 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
     warnings: string[];
   } | null>(null);
 
-  const meta: ChannelMeta | null = selectedType ? CHANNEL_META[selectedType] : null;
+  const language = i18n.resolvedLanguage ?? i18n.language;
+  const isChinese = language.toLowerCase().startsWith('zh');
+  const meta: ChannelMeta | null = selectedType ? getChannelMeta(selectedType, language) : null;
 
   // Load existing config when a channel type is selected
   useEffect(() => {
@@ -379,15 +394,17 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       setConfigValues({});
       setChannelName('');
       setIsExistingConfig(false);
-      setChannelName('');
-      setIsExistingConfig(false);
-      // Ensure we clean up any pending QR session if switching away
-      window.electron.ipcRenderer.invoke('channel:cancelWhatsAppQr').catch(() => { });
+      setQrCode(null);
+      setConnecting(false);
+      setValidationResult(null);
       return;
     }
 
     let cancelled = false;
     setLoadingConfig(true);
+    setQrCode(null);
+    setConnecting(false);
+    setValidationResult(null);
 
     (async () => {
       try {
@@ -425,64 +442,235 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
     }
   }, [selectedType, loadingConfig]);
 
-  // Listen for WhatsApp QR events
+  // Listen for generic QR login events
   useEffect(() => {
-    if (selectedType !== 'whatsapp') return;
+    if (!selectedType || getChannelMeta(selectedType, language).connectionType !== 'qr') return;
 
     const onQr = (...args: unknown[]) => {
-      const data = args[0] as { qr: string; raw: string };
-      setQrCode(`data:image/png;base64,${data.qr}`);
-    };
+      const payload = args[0] as {
+        channelType?: ChannelType;
+        qrDataUrl?: string;
+      } | undefined;
 
-    const onSuccess = async (...args: unknown[]) => {
-      const data = args[0] as { accountId?: string } | undefined;
-      toast.success(t('toast.whatsappConnected'));
-      const accountId = data?.accountId || channelName.trim() || 'default';
-      try {
-        const saveResult = await window.electron.ipcRenderer.invoke(
-          'channel:saveConfig',
-          'whatsapp',
-          { enabled: true }
-        ) as { success?: boolean; error?: string };
-        if (!saveResult?.success) {
-          console.error('Failed to save WhatsApp config:', saveResult?.error);
-        } else {
-          console.info('Saved WhatsApp config for account:', accountId);
-        }
-      } catch (error) {
-        console.error('Failed to save WhatsApp config:', error);
+      if (payload?.channelType !== selectedType || !payload.qrDataUrl) {
+        return;
       }
-      // Register the channel locally so it shows up immediately
-      addChannel({
-        type: 'whatsapp',
-        name: channelName || 'WhatsApp',
-      }).then(() => {
-        // Restart gateway to pick up the new session
-        window.electron.ipcRenderer.invoke('gateway:restart').catch(console.error);
-        onChannelAdded();
-      });
-    };
 
-    const onError = (...args: unknown[]) => {
-      const err = args[0] as string;
-      console.error('WhatsApp Login Error:', err);
-      toast.error(t('toast.whatsappFailed', { error: err }));
-      setQrCode(null);
+      setQrCode(payload.qrDataUrl);
       setConnecting(false);
     };
 
-    const removeQrListener = window.electron.ipcRenderer.on('channel:whatsapp-qr', onQr);
-    const removeSuccessListener = window.electron.ipcRenderer.on('channel:whatsapp-success', onSuccess);
-    const removeErrorListener = window.electron.ipcRenderer.on('channel:whatsapp-error', onError);
+    const onSuccess = async (...args: unknown[]) => {
+      const payload = args[0] as {
+        channelType?: ChannelType;
+        data?: unknown;
+      } | undefined;
+
+      if (payload?.channelType !== selectedType) {
+        return;
+      }
+
+      setQrCode(null);
+
+      try {
+        if (selectedType === 'whatsapp') {
+          const data = payload.data as { accountId?: string } | undefined;
+          const accountId = data?.accountId || channelName.trim() || 'default';
+          const saveResult = await window.electron.ipcRenderer.invoke(
+            'channel:saveConfig',
+            'whatsapp',
+            { enabled: true }
+          ) as { success?: boolean; error?: string };
+
+          if (!saveResult?.success) {
+            throw new Error(saveResult?.error || 'Failed to save WhatsApp config');
+          }
+
+          await addChannel({
+            type: 'whatsapp',
+            name: channelName || 'WhatsApp',
+          });
+
+          toast.success(t('toast.whatsappConnected'));
+          console.info('Saved WhatsApp config for account:', accountId);
+          await window.electron.ipcRenderer.invoke('gateway:restart');
+          onChannelAdded();
+          return;
+        }
+
+        if (selectedType === 'easyclaw') {
+          const data = payload.data as {
+            serverUrl: string;
+            deviceId: string;
+            deviceToken: string;
+            botId?: number;
+            botName?: string;
+            userEmail?: string;
+          };
+          const easyClawDisplayName = getChannelDisplayName('easyclaw', language);
+          const channelDisplayName = data.botName || easyClawDisplayName;
+          const saveResult = await window.electron.ipcRenderer.invoke(
+            'channel:saveConfig',
+            'easyclaw',
+            {
+              enabled: true,
+              name: channelDisplayName,
+              serverUrl: data.serverUrl,
+              deviceId: data.deviceId,
+              deviceToken: data.deviceToken,
+              ...(typeof data.botId === 'number' ? { botId: data.botId } : {}),
+            }
+          ) as { success?: boolean; error?: string };
+
+          if (!saveResult?.success) {
+            throw new Error(saveResult?.error || `Failed to save ${easyClawDisplayName} config`);
+          }
+
+          await addChannel({
+            type: 'easyclaw',
+            name: channelDisplayName,
+          });
+
+          toast.success(
+            data.userEmail
+              ? (isChinese
+                ? `${easyClawDisplayName} 已绑定到 ${data.userEmail}`
+                : `${easyClawDisplayName} bound to ${data.userEmail}`)
+              : (isChinese
+                ? `${easyClawDisplayName} 绑定成功`
+                : `${easyClawDisplayName} binding succeeded`)
+          );
+          await window.electron.ipcRenderer.invoke('gateway:restart');
+          onChannelAdded();
+        }
+      } catch (error) {
+        toast.error(t('toast.configFailed', { error: String(error) }));
+      } finally {
+        setConnecting(false);
+      }
+    };
+
+    const onError = (...args: unknown[]) => {
+      const payload = args[0] as {
+        channelType?: ChannelType;
+        error?: string;
+      } | undefined;
+
+      if (payload?.channelType !== selectedType) {
+        return;
+      }
+
+      const error = String(payload?.error ?? 'Binding failed');
+      if (selectedType === 'whatsapp') {
+        toast.error(t('toast.whatsappFailed', { error }));
+      } else {
+        toast.error(error);
+      }
+      setConnecting(false);
+      setQrCode(null);
+    };
+
+    const removeQrListener = window.electron.ipcRenderer.on('channel:qr', onQr);
+    const removeSuccessListener = window.electron.ipcRenderer.on('channel:qr-success', onSuccess);
+    const removeErrorListener = window.electron.ipcRenderer.on('channel:qr-error', onError);
 
     return () => {
       if (typeof removeQrListener === 'function') removeQrListener();
       if (typeof removeSuccessListener === 'function') removeSuccessListener();
       if (typeof removeErrorListener === 'function') removeErrorListener();
-      // Cancel when unmounting or switching types
-      window.electron.ipcRenderer.invoke('channel:cancelWhatsAppQr').catch(() => { });
+      window.electron.ipcRenderer.invoke('channel:cancelQrLogin', selectedType).catch(() => { });
     };
-  }, [selectedType, addChannel, channelName, onChannelAdded, t]);
+  }, [selectedType, addChannel, channelName, onChannelAdded, t, language, isChinese]);
+
+  /*
+  useEffect(() => {
+    return;
+
+    const onQr = (...args: unknown[]) => {
+      const data = args[0] as { qr: string };
+      setQrCode(`data:image/png;base64,${data.qr}`);
+      setConnecting(false);
+    };
+
+    const onSuccess = async (...args: unknown[]) => {
+      const data = args[0] as {
+        serverUrl: string;
+        deviceId: string;
+        deviceToken: string;
+        botId?: number;
+        botName?: string;
+        userEmail?: string;
+      };
+
+      try {
+        const saveResult = await window.electron.ipcRenderer.invoke(
+          'channel:saveConfig',
+          'easyclaw',
+          {
+            enabled: true,
+            name: data.botName || '龙虾APP',
+            serverUrl: data.serverUrl,
+            deviceId: data.deviceId,
+            deviceToken: data.deviceToken,
+            ...(typeof data.botId === 'number' ? { botId: data.botId } : {}),
+          }
+        ) as { success?: boolean; error?: string };
+
+        if (!saveResult?.success) {
+          throw new Error(saveResult?.error || 'Failed to save 龙虾APP config');
+        }
+
+        await addChannel({
+          type: 'easyclaw',
+          name: data.botName || '龙虾APP',
+        });
+
+        toast.success(
+          data.userEmail
+            ? `龙虾APP 已绑定到 ${data.userEmail}`
+            : '龙虾APP 绑定成功'
+        );
+        onChannelAdded();
+      } catch (error) {
+        toast.error(t('toast.configFailed', { error: String(error) }));
+        setConnecting(false);
+      }
+    };
+
+    const onError = (...args: unknown[]) => {
+      const error = String(args[0] ?? '绑定失败');
+      toast.error(error);
+      setConnecting(false);
+      setQrCode(null);
+    };
+
+    const removeQrListener = window.electron.ipcRenderer.on('channel:qr', onQr);
+    const removeSuccessListener = window.electron.ipcRenderer.on('channel:qr-success', onSuccess);
+    const removeErrorListener = window.electron.ipcRenderer.on('channel:qr-error', onError);
+
+    return () => {
+      if (typeof removeQrListener === 'function') removeQrListener();
+      if (typeof removeSuccessListener === 'function') removeSuccessListener();
+      if (typeof removeErrorListener === 'function') removeErrorListener();
+      window.electron.ipcRenderer.invoke('channel:cancelQrLogin', selectedType).catch(() => { });
+    };
+  }, [selectedType, addChannel, onChannelAdded, t]);
+
+  useEffect(() => {
+    return;
+
+    setConnecting(true);
+    window.electron.ipcRenderer.invoke('channel:requestQrLogin', selectedType).then((result) => {
+      const payload = result as { success?: boolean; error?: string };
+      if (!payload?.success) {
+        throw new Error(payload?.error || 'Failed to start 龙虾APP binding');
+      }
+    }).catch((error) => {
+      toast.error(String(error));
+      setConnecting(false);
+    });
+  }, [selectedType, loadingConfig, qrCode, connecting]);
+  */
 
   const handleValidate = async () => {
     if (!selectedType) return;
@@ -537,9 +725,21 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
     try {
       // For QR-based channels, request QR code
       if (meta.connectionType === 'qr') {
-        const accountId = channelName.trim() || 'default';
-        await window.electron.ipcRenderer.invoke('channel:requestWhatsAppQr', accountId);
-        // The QR code will be set via event listener
+        const result = await window.electron.ipcRenderer.invoke(
+          'channel:requestQrLogin',
+          selectedType,
+          selectedType === 'whatsapp'
+            ? { accountId: channelName.trim() || 'default' }
+            : undefined
+        ) as {
+          success?: boolean;
+          error?: string;
+        };
+
+        if (!result?.success) {
+          throw new Error(result?.error || `Failed to start QR login for ${selectedType}`);
+        }
+
         return;
       }
 
@@ -608,7 +808,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       // Step 3: Add a local channel entry for the UI
       await addChannel({
         type: selectedType,
-        name: channelName || CHANNEL_NAMES[selectedType],
+        name: channelName || getChannelDisplayName(selectedType, language),
         token: configValues[meta.configFields[0]?.key] || undefined,
       });
 
@@ -674,14 +874,14 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
             <CardTitle>
               {selectedType
                 ? isExistingConfig
-                  ? t('dialog.updateTitle', { name: CHANNEL_NAMES[selectedType] })
-                  : t('dialog.configureTitle', { name: CHANNEL_NAMES[selectedType] })
+                  ? t('dialog.updateTitle', { name: getChannelDisplayName(selectedType, language) })
+                  : t('dialog.configureTitle', { name: getChannelDisplayName(selectedType, language) })
                 : t('dialog.addTitle')}
             </CardTitle>
             <CardDescription>
               {selectedType && isExistingConfig
                 ? t('dialog.existingDesc')
-                : meta ? t(meta.description) : t('dialog.selectDesc')}
+                : meta ? localizeEasyClawCopy(selectedType, t(meta.description), language) : t('dialog.selectDesc')}
             </CardDescription>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
@@ -693,7 +893,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
             // Channel type selection
             <div className="grid grid-cols-2 gap-4">
               {getPrimaryChannels().map((type) => {
-                const channelMeta = CHANNEL_META[type];
+                const channelMeta = getChannelMeta(type, language);
                 return (
                   <button
                     key={type}
@@ -766,22 +966,24 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
                 </div>
                 <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-1">
                   {meta?.instructions.map((instruction, i) => (
-                    <li key={i}>{t(instruction)}</li>
+                    <li key={i}>{localizeEasyClawCopy(selectedType, t(instruction), language)}</li>
                   ))}
                 </ol>
               </div>
 
               {/* Channel name */}
-              <div className="space-y-2">
-                <Label htmlFor="name">{t('dialog.channelName')}</Label>
-                <Input
-                  ref={firstInputRef}
-                  id="name"
-                  placeholder={t('dialog.channelNamePlaceholder', { name: meta?.name })}
-                  value={channelName}
-                  onChange={(e) => setChannelName(e.target.value)}
-                />
-              </div>
+              {selectedType !== 'easyclaw' && (
+                <div className="space-y-2">
+                  <Label htmlFor="name">{t('dialog.channelName')}</Label>
+                  <Input
+                    ref={firstInputRef}
+                    id="name"
+                    placeholder={t('dialog.channelNamePlaceholder', { name: meta?.name })}
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                  />
+                </div>
+              )}
 
               {/* Configuration fields */}
               {meta?.configFields.map((field) => (
@@ -846,7 +1048,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
                 </Button>
                 <div className="flex gap-2">
                   {/* Validation Button - Only for token-based channels for now */}
-                  {meta?.connectionType === 'token' && (
+                  {meta?.connectionType === 'token' && selectedType !== 'easyclaw' && (
                     <Button
                       variant="secondary"
                       onClick={handleValidate}

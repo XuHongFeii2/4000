@@ -13,6 +13,9 @@
     "availableDesc": "新しいチャンネルを接続",
     "showAll": "すべて表示",
     "pluginBadge": "プラグイン",
+    "configured": "設定済みチャンネル",
+    "configuredDesc": "これらのチャンネルは設定済みで、ゲートウェイから利用できます",
+    "configuredBadge": "設定済み",
     "toast": {
         "whatsappConnected": "WhatsApp が正常に接続されました",
         "whatsappFailed": "WhatsApp 接続に失敗しました: {{error}}",
@@ -51,6 +54,16 @@
         "envVar": "環境変数: {{var}}"
     },
     "meta": {
+        "easyclaw": {
+            "description": "Feishu のように QR コードで EasyClaw と ClawX アプリを紐付けし、ユーザーには URL や秘密情報を見せません",
+            "docsUrl": "http://app.easyclaw.bar/docs#/binding",
+            "fields": {},
+            "instructions": [
+                "龙虾APP を開くと自動的にペアリング QR コードが生成されます",
+                "アプリで「ロボットを追加」を押してこの QR コードを読み取ります",
+                "読み取り後、EasyClaw に device_id と device_token が自動保存されます"
+            ]
+        },
         "telegram": {
             "description": "@BotFather からのボットトークンを使用して Telegram に接続します",
             "docsUrl": "https://icnnp7d0dymg.feishu.cn/wiki/TjiGwxsMWi7hpDkDAQBc0ydMnEf#MEkKdqXP1orZU2x4SrFcdUHgnl1",

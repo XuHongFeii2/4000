@@ -4,6 +4,7 @@
  */
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 
 export type Status = 'connected' | 'disconnected' | 'connecting' | 'error' | 'running' | 'stopped' | 'starting' | 'reconnecting';
 
@@ -25,8 +26,9 @@ const statusConfig: Record<Status, { label: string; variant: 'success' | 'second
 };
 
 export function StatusBadge({ status, label, showDot = true }: StatusBadgeProps) {
+  const { t } = useTranslation('common');
   const config = statusConfig[status];
-  const displayLabel = label || config.label;
+  const displayLabel = label || t(`status.${status}`, config.label);
   
   return (
     <Badge variant={config.variant} className="gap-1.5">

@@ -1,0 +1,40 @@
+{
+  "name": "easyclaw",
+  "version": "1.1.1",
+  "description": "OpenClaw lobtalk app bridge channel plugin",
+  "type": "module",
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "channel",
+    "easyclaw"
+  ],
+  "author": "ClawX",
+  "license": "MIT",
+  "dependencies": {
+    "json5": "^2.2.3",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.2.13"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ],
+    "channel": {
+      "id": "easyclaw",
+      "label": "lobtalk app",
+      "selectionLabel": "lobtalk app(\u9f99\u867eapp,QR link)",
+      "docsPath": "/channels/easyclaw",
+      "docsLabel": "lobtalk app",
+      "blurb": "Link OpenClaw to lobtalk app through QR registration and the bridge WebSocket.",
+      "order": 68
+    },
+    "install": {
+      "localPath": "extensions/easyclaw",
+      "defaultChoice": "local"
+    }
+  }
+}

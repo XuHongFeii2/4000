@@ -8,6 +8,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   MessageSquare,
+  Search,
   Radio,
   Puzzle,
   Clock,
@@ -84,6 +85,7 @@ export function Sidebar() {
   // Use Case State
   const [showUseCases, setShowUseCases] = useState(false);
   const [useCases, setUseCases] = useState<any[]>([]);
+  const [useCaseSearchQuery, setUseCaseSearchQuery] = useState('');
 
   // Contact Modal State
   const [showContactModal, setShowContactModal] = useState(false);
@@ -180,6 +182,15 @@ export function Sidebar() {
     { to: '/dashboard', icon: <Home className="h-5 w-5" />, label: t('sidebar.dashboard') },
     { to: '/settings', icon: <Settings className="h-5 w-5" />, label: t('sidebar.settings') },
   ];
+
+  const filteredUseCases = useCases.filter((useCase) => {
+    const query = useCaseSearchQuery.trim().toLowerCase();
+    if (!query) return true;
+
+    return [useCase.name_zh, useCase.name_en, useCase.desc_zh, useCase.desc_en]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
 
   return (
     <aside
@@ -367,39 +378,57 @@ export function Sidebar() {
 
       {/* Use Cases Modal */}
       {showUseCases && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative bg-[#0F172A] border border-white/10 rounded-xl w-[90%] h-[90%] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-4 border-b border-white/10 bg-[#1E293B]">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <BookOpen className="w-6 h-6 text-primary" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/45 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative flex h-[90%] w-[90%] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-4">
+              <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900">
+                <BookOpen className="h-6 w-6 text-sky-600" />
                 {language === 'zh' ? 'OpenClaw 使用案例库' : 'OpenClaw Use Case Library'}
               </h2>
-              <Button variant="ghost" size="icon" onClick={() => setShowUseCases(false)} className="hover:bg-red-500/20 hover:text-red-500">
-                <X className="w-5 h-5" />
+              <Button variant="ghost" size="icon" onClick={() => setShowUseCases(false)} className="text-slate-500 hover:bg-slate-100 hover:text-slate-900">
+                <X className="h-5 w-5" />
               </Button>
             </div>
             
-            <div className="flex-1 overflow-auto p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {useCases.map((useCase) => (
+            <div className="border-b border-slate-200 bg-white p-4">
+              <div className="relative max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={useCaseSearchQuery}
+                  onChange={(e) => setUseCaseSearchQuery(e.target.value)}
+                  placeholder={language === 'zh' ? '\u641c\u7d22\u4f7f\u7528\u6848\u4f8b' : 'Search use cases'}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-sky-400 focus:bg-white focus:ring-2 focus:ring-sky-100"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-slate-50 p-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredUseCases.map((useCase) => (
                   <div 
                     key={useCase.id} 
-                    className="bg-[#1E293B]/50 border border-white/5 rounded-lg p-4 hover:border-primary/50 hover:bg-[#1E293B] transition-all cursor-pointer group flex flex-col h-full"
+                    className="group flex h-full cursor-pointer flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-md"
                     onClick={() => window.electron.openExternal(useCase.url)}
                   >
-                    <h3 className="text-lg font-semibold text-primary mb-2 group-hover:text-primary/80 transition-colors">
+                    <h3 className="mb-2 text-lg font-semibold text-slate-900 transition-colors group-hover:text-sky-700">
                       {language === 'zh' ? useCase.name_zh : useCase.name_en}
                     </h3>
-                    <p className="text-sm text-gray-400 flex-1">
+                    <p className="flex-1 text-sm leading-6 text-slate-600">
                       {language === 'zh' ? useCase.desc_zh : useCase.desc_en}
                     </p>
-                    <div className="mt-4 pt-4 border-t border-white/5 flex items-center text-xs text-gray-500 group-hover:text-primary transition-colors">
-                      <ExternalLink className="w-3 h-3 mr-1" />
+                    <div className="mt-4 flex items-center border-t border-slate-100 pt-4 text-xs font-medium text-slate-500 transition-colors group-hover:text-sky-700">
+                      <ExternalLink className="mr-1 h-3 w-3" />
                       {language === 'zh' ? '查看详情' : 'View Details'}
                     </div>
                   </div>
                 ))}
               </div>
+              {filteredUseCases.length === 0 && (
+                <div className="flex min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white text-sm text-slate-500">
+                  {language === 'zh' ? '\u6ca1\u6709\u627e\u5230\u5339\u914d\u7684\u6848\u4f8b' : 'No matching use cases'}
+                </div>
+              )}
             </div>
           </div>
         </div>

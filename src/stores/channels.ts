@@ -3,7 +3,7 @@
  * Manages messaging channel state
  */
 import { create } from 'zustand';
-import type { Channel, ChannelType } from '../types/channel';
+import { getChannelDisplayName, type Channel, type ChannelType } from '../types/channel';
 
 interface AddChannelParams {
   type: ChannelType;
@@ -26,6 +26,28 @@ interface ChannelsState {
   setChannels: (channels: Channel[]) => void;
   updateChannel: (channelId: string, updates: Partial<Channel>) => void;
   clearError: () => void;
+}
+
+async function getConfiguredChannelsFallback(): Promise<Channel[]> {
+  try {
+    const result = await window.electron.ipcRenderer.invoke('channel:listConfigured') as {
+      success: boolean;
+      channels?: string[];
+    };
+
+    if (!result.success || !Array.isArray(result.channels) || result.channels.length === 0) {
+      return [];
+    }
+
+    return result.channels.map((channelType) => ({
+      id: `${channelType}-default`,
+      type: channelType as ChannelType,
+      name: getChannelDisplayName(channelType as ChannelType),
+      status: 'disconnected' as const,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export const useChannelsStore = create<ChannelsState>((set, get) => ({
@@ -126,14 +148,21 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
           });
         }
 
-        set({ channels, loading: false });
+        const fallbackChannels = channels.length === 0
+          ? await getConfiguredChannelsFallback()
+          : [];
+
+        set({
+          channels: channels.length > 0 ? channels : fallbackChannels,
+          loading: false,
+        });
       } else {
-        // Gateway not available - try to show channels from local config
-        set({ channels: [], loading: false });
+        const fallbackChannels = await getConfiguredChannelsFallback();
+        set({ channels: fallbackChannels, loading: false });
       }
     } catch {
-      // Gateway not connected, show empty
-      set({ channels: [], loading: false });
+      const fallbackChannels = await getConfiguredChannelsFallback();
+      set({ channels: fallbackChannels, loading: false });
     }
   },
 

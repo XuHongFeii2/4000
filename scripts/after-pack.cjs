@@ -291,6 +291,106 @@ function bundlePlugin(nodeModulesRoot, npmName, destDir) {
 
 // ── Main hook ────────────────────────────────────────────────────────────────
 
+function bundleLocalPlugin(sourceDirOrDirs, destDir) {
+  const sourceDirs = Array.isArray(sourceDirOrDirs) ? sourceDirOrDirs : [sourceDirOrDirs];
+  const sourceDir = sourceDirs.find((dir) => existsSync(join(dir, 'openclaw.plugin.json')));
+  if (!sourceDir) {
+    console.warn(`[after-pack] Plugin source not found. Checked: ${sourceDirs.join(' | ')}`);
+    return false;
+  }
+
+  if (existsSync(normWin(destDir))) {
+    rmSync(normWin(destDir), { recursive: true, force: true });
+  }
+  mkdirSync(normWin(destDir), { recursive: true });
+  cpSync(normWin(sourceDir), normWin(destDir), { recursive: true, dereference: true });
+
+  const manifestPath = join(destDir, 'openclaw.plugin.json');
+  if (!existsSync(manifestPath)) {
+    console.warn(`[after-pack] Plugin manifest missing after copy: ${manifestPath}`);
+    return false;
+  }
+
+   const packageJsonPath = join(destDir, 'package.json');
+   if (!existsSync(packageJsonPath)) {
+     console.warn(`[after-pack] Plugin package.json missing after copy: ${packageJsonPath}`);
+     return false;
+   }
+
+   const pluginPkg = JSON.parse(require('fs').readFileSync(packageJsonPath, 'utf8'));
+   const dependencyNames = Object.keys(pluginPkg.dependencies || {});
+   const peerDependencyNames = Object.keys(pluginPkg.peerDependencies || {});
+   const skipPackages = new Set(['typescript', '@playwright/test', ...peerDependencyNames]);
+   const skipScopes = ['@types/'];
+   const collected = new Map();
+   const nodeModulesRoot = join(__dirname, '..', 'node_modules');
+
+   const collectDependency = (dependencyName) => {
+     if (skipPackages.has(dependencyName) || skipScopes.some((scope) => dependencyName.startsWith(scope))) {
+       return true;
+     }
+
+     const dependencyPath = join(nodeModulesRoot, ...dependencyName.split('/'));
+     if (!existsSync(dependencyPath)) {
+       console.warn(`[after-pack] Missing dependency for local plugin "${dependencyName}". Run pnpm install.`);
+       return false;
+     }
+
+     let realDependencyPath;
+     try { realDependencyPath = realpathSync(normWin(dependencyPath)); } catch { realDependencyPath = dependencyPath; }
+     if (collected.has(realDependencyPath)) {
+       return true;
+     }
+     collected.set(realDependencyPath, dependencyName);
+
+     const dependencyPackageJsonPath = join(realDependencyPath, 'package.json');
+     if (!existsSync(dependencyPackageJsonPath)) {
+       return true;
+     }
+
+     const dependencyPkg = JSON.parse(require('fs').readFileSync(dependencyPackageJsonPath, 'utf8'));
+     const childDependencies = Object.keys(dependencyPkg.dependencies || {});
+     const optionalDependencies = Object.keys(dependencyPkg.optionalDependencies || {});
+
+     for (const childDependency of [...childDependencies, ...optionalDependencies]) {
+       if (!collectDependency(childDependency)) {
+         return false;
+       }
+     }
+
+     return true;
+   };
+
+   for (const dependencyName of dependencyNames) {
+     if (!collectDependency(dependencyName)) {
+       return false;
+     }
+   }
+
+   const destNM = join(destDir, 'node_modules');
+   mkdirSync(destNM, { recursive: true });
+   const copiedNames = new Set();
+   let count = 0;
+
+   for (const [rp, pkgName] of collected) {
+     if (copiedNames.has(pkgName)) continue;
+     copiedNames.add(pkgName);
+
+     const destination = join(destNM, pkgName);
+     try {
+       mkdirSync(normWin(dirname(destination)), { recursive: true });
+       cpSync(normWin(rp), normWin(destination), { recursive: true, dereference: true });
+       count++;
+     } catch (error) {
+       console.warn(`[after-pack]   Skipped dep ${pkgName}: ${error.message}`);
+     }
+   }
+
+   console.log(`[after-pack] ✅ Local plugin deps copied: ${count} -> ${destDir}`);
+
+  return true;
+}
+
 exports.default = async function afterPack(context) {
   const appOutDir = context.appOutDir;
   const platform = context.electronPlatformName; // 'win32' | 'darwin' | 'linux'
@@ -338,13 +438,23 @@ exports.default = async function afterPack(context) {
   //     - node_modules/ is excluded by .gitignore so the deps copy must be manual
   const BUNDLED_PLUGINS = [
     { npmName: '@soimy/dingtalk', pluginId: 'dingtalk' },
+    {
+      sourceDir: [
+        join(__dirname, '..', 'build', 'openclaw-plugins', 'easyclaw'),
+        join(__dirname, '..', 'vendor', 'EasyClaw-Plugin'),
+      ],
+      pluginId: 'easyclaw',
+    },
   ];
 
   mkdirSync(pluginsDestRoot, { recursive: true });
-  for (const { npmName, pluginId } of BUNDLED_PLUGINS) {
+  for (const plugin of BUNDLED_PLUGINS) {
+    const { pluginId } = plugin;
     const pluginDestDir = join(pluginsDestRoot, pluginId);
-    console.log(`[after-pack] Bundling plugin ${npmName} -> ${pluginDestDir}`);
-    const ok = bundlePlugin(nodeModulesRoot, npmName, pluginDestDir);
+    console.log(`[after-pack] Bundling plugin ${pluginId} -> ${pluginDestDir}`);
+    const ok = plugin.npmName
+      ? bundlePlugin(nodeModulesRoot, plugin.npmName, pluginDestDir)
+      : bundleLocalPlugin(plugin.sourceDir, pluginDestDir);
     if (ok) {
       const pluginNM = join(pluginDestDir, 'node_modules');
       cleanupUnnecessaryFiles(pluginDestDir);

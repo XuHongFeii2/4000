@@ -13,6 +13,9 @@
     "availableDesc": "连接一个新的频道",
     "showAll": "显示全部",
     "pluginBadge": "插件",
+    "configured": "已配置频道",
+    "configuredDesc": "这些频道已经完成配置，可由网关连接和使用",
+    "configuredBadge": "已配置",
     "toast": {
         "whatsappConnected": "WhatsApp 连接成功",
         "whatsappFailed": "WhatsApp 连接失败: {{error}}",
@@ -51,6 +54,16 @@
         "envVar": "环境变量: {{var}}"
     },
     "meta": {
+        "easyclaw": {
+            "description": "像飞书一样通过二维码把 EasyClaw 和 龙虾APP 绑定，用户无需填写地址或密钥",
+            "docsUrl": "http://app.easyclaw.bar/docs#/binding",
+            "fields": {},
+            "instructions": [
+                "打开 龙虾APP 后会自动生成一个绑定二维码",
+                "在 App 中点击添加机器人，然后扫一扫这个二维码",
+                "扫码成功后会自动下发 device_id 和 device_token 到 EasyClaw"
+            ]
+        },
         "telegram": {
             "description": "使用 @BotFather 提供的机器人令牌连接 Telegram",
             "docsUrl": "https://icnnp7d0dymg.feishu.cn/wiki/TjiGwxsMWi7hpDkDAQBc0ydMnEf#PL8ndvsEwoYVWIx1T4mcB1EvnSb",

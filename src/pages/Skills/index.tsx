@@ -42,10 +42,57 @@ import { toast } from 'sonner';
 import type { Skill, MarketplaceSkill } from '@/types/skill';
 import { useTranslation } from 'react-i18next';
 
+/*
+const PINNED_SKILL_ORDER = [
+  'chanjing-openclaw',
+  '抖音自动发布',
+  '图片视频生成',
+] as const;
 
+const getPinnedSkillRank = (skill: Skill): number => {
+  const candidates = [skill.id, skill.slug, skill.name].filter(Boolean) as string[];
+  let bestRank = Number.POSITIVE_INFINITY;
 
+  for (const candidate of candidates) {
+    const rank = PINNED_SKILL_ORDER.indexOf(candidate as (typeof PINNED_SKILL_ORDER)[number]);
+    if (rank >= 0 && rank < bestRank) {
+      bestRank = rank;
+    }
+  }
+
+  return bestRank;
+};
+*/
 
 // Skill detail dialog component
+/*
+const PRIORITY_SKILL_ORDER = [
+  ['数字人口播生成', 'chanjing-openclaw'],
+  ['抖音自动发布'],
+  ['图片视频生成'],
+] as const;
+*/
+
+const PRIORITY_SKILL_ALIASES = [
+  ['\u6570\u5b57\u4eba\u53e3\u64ad\u751f\u6210', 'chanjing-openclaw'],
+  ['\u6296\u97f3\u81ea\u52a8\u53d1\u5e03'],
+  ['\u56fe\u7247\u89c6\u9891\u751f\u6210'],
+] as const;
+
+const getPrioritySkillRank = (skill: Skill): number => {
+  const candidates = [skill.id, skill.slug, skill.name].filter(Boolean) as string[];
+  let bestRank = Number.POSITIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const rank = PRIORITY_SKILL_ALIASES.findIndex((aliases) => (aliases as readonly string[]).includes(candidate));
+    if (rank !== -1 && rank < bestRank) {
+      bestRank = rank;
+    }
+  }
+
+  return bestRank;
+};
+
 interface SkillDetailDialogProps {
   skill: Skill;
   onClose: () => void;
@@ -584,6 +631,15 @@ export function Skills() {
 
     return matchesSearch && matchesSource;
   }).sort((a, b) => {
+    const pinnedRankA = getPrioritySkillRank(a);
+    const pinnedRankB = getPrioritySkillRank(b);
+    const isPinnedA = Number.isFinite(pinnedRankA);
+    const isPinnedB = Number.isFinite(pinnedRankB);
+
+    if (isPinnedA && isPinnedB) return pinnedRankA - pinnedRankB;
+    if (isPinnedA) return -1;
+    if (isPinnedB) return 1;
+
     // Enabled skills first
     if (a.enabled && !b.enabled) return -1;
     if (!a.enabled && b.enabled) return 1;

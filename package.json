@@ -35,7 +35,7 @@
         "package:mac": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --mac",
         "package:mac:universal": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --mac dmg:universal zip:universal",
         "package:win": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --win -c.directories.output=release-oneclick",
-        "package:win:x64": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --win nsis:x64 -c.directories.output=release-oneclick",
+        " ": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --win nsis:x64 -c.directories.output=release-oneclick",
         "package:linux": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --linux",
         "package:all": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder -w -l -m",
         "release": "pnpm run uv:download && vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --publish always",
@@ -48,6 +48,8 @@
         "clawhub": "^0.5.0",
         "electron-store": "^11.0.2",
         "electron-updater": "^6.8.3",
+        "json5": "^2.2.3",
+        "qrcode-terminal": "^0.12.0",
         "socket.io-client": "^4.8.3",
         "ws": "^8.19.0"
     },

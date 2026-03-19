@@ -3,7 +3,7 @@
  * Registers all IPC handlers for main-renderer communication
  */
 import { ipcMain, BrowserWindow, shell, dialog, app, nativeImage } from 'electron';
-import { existsSync, cpSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, cpSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, extname, basename } from 'node:path';
 import crypto from 'node:crypto';
@@ -55,6 +55,7 @@ import { applyProxySettings } from './proxy';
 import { proxyAwareFetch } from '../utils/proxy-fetch';
 import { getRecentTokenUsageHistory } from '../utils/token-usage';
 import { setTrayTooltip } from './tray';
+import { clawxBindingManager } from '../utils/clawx-binding';
 
 /**
  * For custom/ollama providers, derive a unique key for OpenClaw config files
@@ -188,8 +189,14 @@ export function registerIpcHandlers(
   // Window control handlers (for custom title bar on Windows/Linux)
   registerWindowHandlers(mainWindow);
 
+  // QR login handlers
+  registerQrLoginHandlers(mainWindow);
+
   // WhatsApp handlers
   registerWhatsAppHandlers(mainWindow);
+
+  // ClawX binding handlers
+  registerClawxBindingHandlers(mainWindow);
 
   // Device OAuth handlers (Code Plan)
   registerDeviceOAuthHandlers(mainWindow);
@@ -708,34 +715,77 @@ function registerGatewayHandlers(
  * For checking package status and channel configuration
  */
 function registerOpenClawHandlers(): void {
-  async function ensureDingTalkPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
-    const targetDir = join(homedir(), '.openclaw', 'extensions', 'dingtalk');
+  async function ensureBundledPluginInstalled(
+    pluginId: string,
+    pluginLabel: string,
+    extraDevSources: string[] = []
+  ): Promise<{ installed: boolean; warning?: string }> {
+    const targetDir = join(homedir(), '.openclaw', 'extensions', pluginId);
     const targetManifest = join(targetDir, 'openclaw.plugin.json');
-
-    if (existsSync(targetManifest)) {
-      logger.info('DingTalk plugin already installed from local mirror');
-      return { installed: true };
-    }
-
     const candidateSources = app.isPackaged
       ? [
-        join(process.resourcesPath, 'openclaw-plugins', 'dingtalk'),
-        join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', 'dingtalk'),
-        join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', 'dingtalk')
+        join(process.resourcesPath, 'openclaw-plugins', pluginId),
+        join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', pluginId),
+        join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', pluginId)
       ]
       : [
-        join(app.getAppPath(), 'build', 'openclaw-plugins', 'dingtalk'),
-        join(process.cwd(), 'build', 'openclaw-plugins', 'dingtalk'),
-        join(__dirname, '../../build/openclaw-plugins/dingtalk'),
+        join(app.getAppPath(), 'build', 'openclaw-plugins', pluginId),
+        join(process.cwd(), 'build', 'openclaw-plugins', pluginId),
+        join(__dirname, `../../build/openclaw-plugins/${pluginId}`),
+        ...extraDevSources,
       ];
 
     const sourceDir = candidateSources.find((dir) => existsSync(join(dir, 'openclaw.plugin.json')));
     if (!sourceDir) {
-      logger.warn('Bundled DingTalk plugin mirror not found in candidate paths', { candidateSources });
+      if (existsSync(targetManifest)) {
+        logger.info(`${pluginLabel} plugin already installed locally and no newer bundled mirror was found`);
+        return { installed: true };
+      }
+      logger.warn(`Bundled ${pluginLabel} plugin mirror not found in candidate paths`, { candidateSources });
       return {
         installed: false,
-        warning: `Bundled DingTalk plugin mirror not found. Checked: ${candidateSources.join(' | ')}`,
+        warning: `Bundled ${pluginLabel} plugin mirror not found. Checked: ${candidateSources.join(' | ')}`,
       };
+    }
+
+    const sourceManifestPath = join(sourceDir, 'openclaw.plugin.json');
+    const sourcePkgPath = join(sourceDir, 'package.json');
+    const targetPkgPath = join(targetDir, 'package.json');
+
+    const readJsonValue = (filePath: string): Record<string, unknown> | null => {
+      try {
+        return JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    };
+
+    const sourceManifest = readJsonValue(sourceManifestPath);
+    const targetManifestJson = existsSync(targetManifest) ? readJsonValue(targetManifest) : null;
+    const sourcePkg = existsSync(sourcePkgPath) ? readJsonValue(sourcePkgPath) : null;
+    const targetPkg = existsSync(targetPkgPath) ? readJsonValue(targetPkgPath) : null;
+
+    const sourceVersion =
+      typeof sourceManifest?.version === 'string'
+        ? sourceManifest.version
+        : typeof sourcePkg?.version === 'string'
+          ? sourcePkg.version
+          : null;
+    const targetVersion =
+      typeof targetManifestJson?.version === 'string'
+        ? targetManifestJson.version
+        : typeof targetPkg?.version === 'string'
+          ? targetPkg.version
+          : null;
+
+    if (
+      existsSync(targetManifest) &&
+      targetVersion &&
+      sourceVersion &&
+      targetVersion === sourceVersion
+    ) {
+      logger.info(`${pluginLabel} plugin already installed from local mirror`, { version: targetVersion });
+      return { installed: true };
     }
 
     try {
@@ -744,18 +794,26 @@ function registerOpenClawHandlers(): void {
       cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
 
       if (!existsSync(targetManifest)) {
-        return { installed: false, warning: 'Failed to install DingTalk plugin mirror (manifest missing).' };
+        return { installed: false, warning: `Failed to install ${pluginLabel} plugin mirror (manifest missing).` };
       }
 
-      logger.info(`Installed DingTalk plugin from bundled mirror: ${sourceDir}`);
+      logger.info(`Installed ${pluginLabel} plugin from bundled mirror: ${sourceDir}`);
       return { installed: true };
     } catch (error) {
-      logger.warn('Failed to install DingTalk plugin from bundled mirror:', error);
+      logger.warn(`Failed to install ${pluginLabel} plugin from bundled mirror:`, error);
       return {
         installed: false,
-        warning: 'Failed to install bundled DingTalk plugin mirror',
+        warning: `Failed to install bundled ${pluginLabel} plugin mirror`,
       };
     }
+  }
+
+  async function ensureDingTalkPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
+    return ensureBundledPluginInstalled('dingtalk', 'DingTalk');
+  }
+
+  async function ensureClawxImPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
+    return ensureBundledPluginInstalled('easyclaw', '龙虾APP');
   }
 
   // Get OpenClaw package status
@@ -811,12 +869,14 @@ function registerOpenClawHandlers(): void {
   ipcMain.handle('channel:saveConfig', async (_, channelType: string, config: Record<string, unknown>) => {
     try {
       logger.info('channel:saveConfig', { channelType, keys: Object.keys(config || {}) });
-      if (channelType === 'dingtalk') {
-        const installResult = await ensureDingTalkPluginInstalled();
+      if (channelType === 'dingtalk' || channelType === 'easyclaw' || channelType === 'clawx-im') {
+        const installResult = channelType === 'dingtalk'
+          ? await ensureDingTalkPluginInstalled()
+          : await ensureClawxImPluginInstalled();
         if (!installResult.installed) {
           return {
             success: false,
-            error: installResult.warning || 'DingTalk plugin install failed',
+            error: installResult.warning || `${channelType} plugin install failed`,
           };
         }
         await saveChannelConfig(channelType, config);
@@ -969,6 +1029,150 @@ function registerWhatsAppHandlers(mainWindow: BrowserWindow): void {
     if (!mainWindow.isDestroyed()) {
       logger.error('whatsapp:login-error', error);
       mainWindow.webContents.send('channel:whatsapp-error', error);
+    }
+  });
+}
+
+function registerQrLoginHandlers(mainWindow: BrowserWindow): void {
+  ipcMain.handle('channel:requestQrLogin', async (_, channelType: string, options?: { accountId?: string }) => {
+    try {
+      logger.info('channel:requestQrLogin', { channelType, accountId: options?.accountId });
+
+      switch (channelType) {
+        case 'whatsapp':
+          await whatsAppLoginManager.start(options?.accountId || 'default');
+          return { success: true };
+        case 'easyclaw':
+        case 'clawx-im':
+          await clawxBindingManager.start();
+          return { success: true };
+        default:
+          return { success: false, error: `QR login is not supported for channel: ${channelType}` };
+      }
+    } catch (error) {
+      logger.error('channel:requestQrLogin failed', { channelType, error });
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('channel:cancelQrLogin', async (_, channelType: string) => {
+    try {
+      switch (channelType) {
+        case 'whatsapp':
+          await whatsAppLoginManager.stop();
+          return { success: true };
+        case 'easyclaw':
+        case 'clawx-im':
+          await clawxBindingManager.stop();
+          return { success: true };
+        default:
+          return { success: false, error: `QR login is not supported for channel: ${channelType}` };
+      }
+    } catch (error) {
+      logger.error('channel:cancelQrLogin failed', { channelType, error });
+      return { success: false, error: String(error) };
+    }
+  });
+
+  whatsAppLoginManager.on('qr', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('channel:qr', {
+        channelType: 'whatsapp',
+        qrDataUrl: `data:image/png;base64,${data.qr}`,
+        raw: data.raw,
+      });
+    }
+  });
+
+  whatsAppLoginManager.on('success', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('channel:qr-success', {
+        channelType: 'whatsapp',
+        data,
+      });
+    }
+  });
+
+  whatsAppLoginManager.on('error', (error) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('channel:qr-error', {
+        channelType: 'whatsapp',
+        error: String(error),
+      });
+    }
+  });
+
+  clawxBindingManager.on('qr', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('channel:qr', {
+        channelType: 'easyclaw',
+        qrDataUrl: `data:image/png;base64,${data.qr}`,
+        raw: data.raw,
+      });
+    }
+  });
+
+  clawxBindingManager.on('success', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('channel:qr-success', {
+        channelType: 'easyclaw',
+        data,
+      });
+    }
+  });
+
+  clawxBindingManager.on('error', (error) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('channel:qr-error', {
+        channelType: 'easyclaw',
+        error: String(error),
+      });
+    }
+  });
+}
+
+function registerClawxBindingHandlers(mainWindow: BrowserWindow): void {
+  ipcMain.handle('channel:requestClawxQr', async () => {
+    try {
+      logger.info('channel:requestClawxQr');
+      await clawxBindingManager.start();
+      return { success: true };
+    } catch (error) {
+      logger.error('channel:requestClawxQr failed', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('channel:cancelClawxQr', async () => {
+    try {
+      await clawxBindingManager.stop();
+      return { success: true };
+    } catch (error) {
+      logger.error('channel:cancelClawxQr failed', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  clawxBindingManager.on('qr', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('channel:easyclaw-qr', data);
+      mainWindow.webContents.send('channel:clawx-qr', data);
+    }
+  });
+
+  clawxBindingManager.on('success', (data) => {
+    if (!mainWindow.isDestroyed()) {
+      logger.info('clawx:binding-success', data);
+      mainWindow.webContents.send('channel:easyclaw-success', data);
+      mainWindow.webContents.send('channel:clawx-success', data);
+    }
+  });
+
+  clawxBindingManager.on('error', (error) => {
+    if (!mainWindow.isDestroyed()) {
+      logger.error('clawx:binding-error', error);
+      mainWindow.webContents.send('channel:easyclaw-error', error);
+      mainWindow.webContents.send('channel:clawx-error', error);
     }
   });
 }
