@@ -160,7 +160,23 @@ type BindingSuccessResult = {
   botId?: number;
   botName?: string;
   userEmail?: string;
+  userAccount?: string;
+  userDisplayName?: string;
+  userAvatarUrl?: string;
 };
+
+function normalizeAvatarUrl(avatarUrl?: string): string | undefined {
+  const value = String(avatarUrl ?? '').trim();
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new URL(value, CLAWX_SERVER_URL).toString();
+  } catch {
+    return value;
+  }
+}
 
 export class ClawxBindingManager extends EventEmitter {
   private active = false;
@@ -255,6 +271,9 @@ export class ClawxBindingManager extends EventEmitter {
       const payload = await response.json() as {
         status?: string;
         user_email?: string;
+        user_account?: string;
+        user_display_name?: string;
+        user_avatar_url?: string;
         device_id?: string;
         device_token?: string;
         bot_id?: number;
@@ -275,6 +294,9 @@ export class ClawxBindingManager extends EventEmitter {
           botId: typeof payload.bot_id === 'number' ? payload.bot_id : undefined,
           botName: payload.bot_name ? String(payload.bot_name) : undefined,
           userEmail: payload.user_email ? String(payload.user_email) : undefined,
+          userAccount: payload.user_account ? String(payload.user_account) : undefined,
+          userDisplayName: payload.user_display_name ? String(payload.user_display_name) : undefined,
+          userAvatarUrl: normalizeAvatarUrl(payload.user_avatar_url),
         };
         this.emit('success', result);
         await this.stop();

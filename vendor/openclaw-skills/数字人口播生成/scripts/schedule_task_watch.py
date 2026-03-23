@@ -42,16 +42,14 @@ def _candidate_install_dirs() -> list[Path]:
 
     local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
     if local_app_data:
-        candidates.append(Path(local_app_data) / "Programs" / "openclaw中文版")
-        candidates.append(Path(local_app_data) / "Programs" / "openclaw-chinese")
         candidates.append(Path(local_app_data) / "Programs" / "EasyClaw")
 
-    for executable_name in ("openclaw.cmd", "openclaw", "openclaw-chinese.exe", "EasyClaw.exe", "ClawX.exe"):
+    for executable_name in ("openclaw.cmd", "openclaw", "EasyClaw.exe", "ClawX.exe"):
         resolved = shutil.which(executable_name)
         if not resolved:
             continue
         resolved_path = Path(resolved)
-        if resolved_path.name.lower() in {"openclaw-chinese.exe", "easyclaw.exe", "clawx.exe"}:
+        if resolved_path.name.lower() in {"easyclaw.exe", "clawx.exe"}:
             candidates.append(resolved_path.parent)
             continue
         if resolved_path.name.lower() == "openclaw.cmd" and len(resolved_path.parents) >= 3:
@@ -63,22 +61,11 @@ def _candidate_install_dirs() -> list[Path]:
 def _install_dir_command_candidates(install_dir: Path) -> list[tuple[list[str], dict[str, str]]]:
     candidates: list[tuple[list[str], dict[str, str]]] = []
     openclaw_mjs = install_dir / "resources" / "openclaw" / "openclaw.mjs"
-    openclaw_chinese_exe = install_dir / "openclaw-chinese.exe"
     easyclaw_exe = install_dir / "EasyClaw.exe"
     clawx_exe = install_dir / "ClawX.exe"
     openclaw_cmd = install_dir / "resources" / "cli" / "openclaw.cmd"
 
     if openclaw_mjs.exists():
-        if openclaw_chinese_exe.exists():
-            candidates.append(
-                (
-                    [str(openclaw_chinese_exe), str(openclaw_mjs)],
-                    {
-                        "ELECTRON_RUN_AS_NODE": "1",
-                        "OPENCLAW_EMBEDDED_IN": "openclaw中文版",
-                    },
-                )
-            )
         if easyclaw_exe.exists():
             candidates.append(
                 (

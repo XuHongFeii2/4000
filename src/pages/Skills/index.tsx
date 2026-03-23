@@ -77,6 +77,7 @@ const PRIORITY_SKILL_ALIASES = [
   ['\u6570\u5b57\u4eba\u53e3\u64ad\u751f\u6210', 'chanjing-openclaw'],
   ['\u6296\u97f3\u81ea\u52a8\u53d1\u5e03'],
   ['\u56fe\u7247\u89c6\u9891\u751f\u6210'],
+  ['skill-vetter'],
 ] as const;
 
 const getPrioritySkillRank = (skill: Skill): number => {

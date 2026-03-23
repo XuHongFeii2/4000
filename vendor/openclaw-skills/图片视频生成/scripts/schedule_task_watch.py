@@ -69,16 +69,25 @@ def _candidate_install_dirs() -> list[Path]:
 
     local_app_data = os.environ.get("LOCALAPPDATA", "").strip()
     if local_app_data:
-        candidates.append(Path(local_app_data) / "Programs" / "openclaw中文版")
-        candidates.append(Path(local_app_data) / "Programs" / "openclaw-chinese")
-        candidates.append(Path(local_app_data) / "Programs" / "EasyClaw")
+        programs_dir = Path(local_app_data) / "Programs"
+        candidates.append(programs_dir / "EasyClaw")
+        candidates.append(programs_dir / "ClawX")
+        candidates.append(programs_dir / "openclaw-chinese")
+        try:
+            for child in programs_dir.iterdir():
+                if not child.is_dir():
+                    continue
+                if (child / "resources" / "openclaw" / "openclaw.mjs").exists():
+                    candidates.append(child)
+        except OSError:
+            pass
 
-    for executable_name in ("openclaw.cmd", "openclaw", "openclaw-chinese.exe", "EasyClaw.exe", "ClawX.exe"):
+    for executable_name in ("openclaw.cmd", "openclaw", "EasyClaw.exe", "ClawX.exe"):
         resolved = shutil.which(executable_name)
         if not resolved:
             continue
         resolved_path = Path(resolved)
-        if resolved_path.name.lower() in {"openclaw-chinese.exe", "easyclaw.exe", "clawx.exe"}:
+        if resolved_path.name.lower() in {"easyclaw.exe", "clawx.exe"}:
             candidates.append(resolved_path.parent)
             continue
         if resolved_path.name.lower() == "openclaw.cmd" and len(resolved_path.parents) >= 3:
@@ -90,39 +99,25 @@ def _candidate_install_dirs() -> list[Path]:
 def _install_dir_command_candidates(install_dir: Path) -> list[tuple[list[str], dict[str, str]]]:
     candidates: list[tuple[list[str], dict[str, str]]] = []
     openclaw_mjs = install_dir / "resources" / "openclaw" / "openclaw.mjs"
-    openclaw_chinese_exe = install_dir / "openclaw-chinese.exe"
-    easyclaw_exe = install_dir / "EasyClaw.exe"
-    clawx_exe = install_dir / "ClawX.exe"
     openclaw_cmd = install_dir / "resources" / "cli" / "openclaw.cmd"
 
     if openclaw_mjs.exists():
-        if openclaw_chinese_exe.exists():
+        launcher_names = (
+            "EasyClaw.exe",
+            "ClawX.exe",
+            "openclaw-chinese.exe",
+            "openclaw.exe",
+        )
+        for launcher_name in launcher_names:
+            launcher_path = install_dir / launcher_name
+            if not launcher_path.exists():
+                continue
             candidates.append(
                 (
-                    [str(openclaw_chinese_exe), str(openclaw_mjs)],
+                    [str(launcher_path), str(openclaw_mjs)],
                     {
                         "ELECTRON_RUN_AS_NODE": "1",
-                        "OPENCLAW_EMBEDDED_IN": "openclaw中文版",
-                    },
-                )
-            )
-        if easyclaw_exe.exists():
-            candidates.append(
-                (
-                    [str(easyclaw_exe), str(openclaw_mjs)],
-                    {
-                        "ELECTRON_RUN_AS_NODE": "1",
-                        "OPENCLAW_EMBEDDED_IN": "EasyClaw",
-                    },
-                )
-            )
-        if clawx_exe.exists():
-            candidates.append(
-                (
-                    [str(clawx_exe), str(openclaw_mjs)],
-                    {
-                        "ELECTRON_RUN_AS_NODE": "1",
-                        "OPENCLAW_EMBEDDED_IN": "ClawX",
+                        "OPENCLAW_EMBEDDED_IN": launcher_path.stem,
                     },
                 )
             )
@@ -412,6 +407,30 @@ def _load_clawx_im_config() -> dict | None:
     }
 
 
+def _load_easyclaw_config() -> dict | None:
+    payload = _read_json_file(DEFAULT_OPENCLAW_CONFIG_PATH)
+    if not isinstance(payload, dict):
+        return None
+    channels = payload.get("channels")
+    if not isinstance(channels, dict):
+        return None
+    easyclaw = channels.get("easyclaw")
+    if not isinstance(easyclaw, dict):
+        return None
+    server_url = str(easyclaw.get("serverUrl") or "").strip()
+    device_id = str(easyclaw.get("deviceId") or "").strip()
+    device_token = str(easyclaw.get("deviceToken") or "").strip()
+    bot_id = str(easyclaw.get("botId") or "").strip()
+    if not server_url or not device_id or not device_token:
+        return None
+    return {
+        "server_url": server_url.rstrip("/"),
+        "device_id": device_id,
+        "device_token": device_token,
+        "bot_id": bot_id,
+    }
+
+
 def _fetch_clawx_im_events(*, server_url: str, device_id: str, device_token: str, limit: int = 50) -> list[dict]:
     url = urllib.parse.urljoin(server_url.rstrip("/") + "/", "api/v1/openclaw/bridge/inbound")
     query = urllib.parse.urlencode(
@@ -482,6 +501,109 @@ def _resolve_clawx_im_reply_target() -> dict[str, str] | None:
     return None
 
 
+def _strip_easyclaw_message_label(value: object) -> str:
+    text = str(value or "").strip()
+    if text.startswith("easyclaw-msg:"):
+        return text.split(":", 1)[1].strip()
+    return text
+
+
+def _strip_easyclaw_sender_label(value: object) -> str:
+    text = str(value or "").strip()
+    if text.startswith("easyclaw:bot:"):
+        return ""
+    if text.startswith("easyclaw:"):
+        return text.split(":", 1)[1].strip()
+    return text
+
+
+def _strip_easyclaw_bot_label(value: object) -> str:
+    text = str(value or "").strip()
+    if text.startswith("easyclaw:bot:"):
+        return text.split(":", 2)[2].strip()
+    return text
+
+
+def _resolve_easyclaw_reply_target(
+    *,
+    latest_session: dict[str, str] | None,
+    session_notification: dict[str, str] | None,
+) -> dict[str, str] | None:
+    session_file = ""
+    expected_to = ""
+    origin_from = ""
+    origin_to = ""
+    if session_notification is not None:
+        session_file = str(session_notification.get("session_file") or "").strip()
+        expected_to = str(session_notification.get("delivery_to") or "").strip()
+        origin_from = str(session_notification.get("origin_from") or "").strip()
+        origin_to = str(session_notification.get("origin_to") or "").strip()
+    if not session_file and latest_session is not None:
+        session_file = str(latest_session.get("session_file") or "").strip()
+        expected_to = str(latest_session.get("to") or "").strip()
+        origin_from = str(latest_session.get("origin_from") or "").strip()
+        origin_to = str(latest_session.get("origin_to") or "").strip()
+    if latest_session is None and not session_file:
+        return None
+    if latest_session is not None and latest_session.get("channel") != "easyclaw":
+        return None
+    config = _load_easyclaw_config()
+    if config is None:
+        return None
+    conversation_info = _extract_latest_conversation_info(session_file)
+    event_id = ""
+    inbound_message_id = ""
+    group_channel = ""
+    sender_id = _strip_easyclaw_sender_label(origin_from)
+    bot_id = _strip_easyclaw_bot_label(origin_to or expected_to or config.get("bot_id") or "")
+    if isinstance(conversation_info, dict):
+        event_id = str(
+            conversation_info.get("event_id")
+            or conversation_info.get("topic_id")
+            or ""
+        ).strip()
+        inbound_message_id = _strip_easyclaw_message_label(
+            conversation_info.get("message_id")
+            or conversation_info.get("thread_label")
+            or ""
+        )
+        group_channel = str(conversation_info.get("group_channel") or "").strip()
+        sender_id = _strip_easyclaw_sender_label(
+            conversation_info.get("sender_id")
+            or conversation_info.get("from")
+            or origin_from
+        ) or sender_id
+        bot_id = _strip_easyclaw_bot_label(
+            conversation_info.get("bot_id")
+            or conversation_info.get("to")
+            or origin_to
+            or expected_to
+            or config.get("bot_id")
+            or ""
+        ) or bot_id
+    if group_channel and expected_to and group_channel != expected_to:
+        return None
+    if not event_id and not sender_id:
+        return None
+    if not event_id:
+        if not bot_id:
+            bot_id = str(config.get("bot_id") or "").strip()
+    if config.get("bot_id") and expected_to:
+        expected_bot_target = f"easyclaw:bot:{config['bot_id']}"
+        if expected_to != expected_bot_target:
+            return None
+    return {
+        "mode": "easyclaw-reply",
+        "event_id": event_id,
+        "inbound_message_id": inbound_message_id,
+        "sender_id": sender_id,
+        "bot_id": bot_id,
+        "server_url": config["server_url"],
+        "device_id": config["device_id"],
+        "device_token": config["device_token"],
+    }
+
+
 def _iter_session_store_paths() -> list[Path]:
     configured_path = Path(os.environ.get("OPENCLAW_SESSION_STATE_PATH", "").strip() or DEFAULT_SESSION_STATE_PATH)
     candidates = [configured_path]
@@ -496,6 +618,30 @@ def _iter_session_store_paths() -> list[Path]:
     return [path for path in _unique_paths(candidates) if path.exists()]
 
 
+def _collect_session_target_aliases(session_key: str, item: dict) -> set[str]:
+    aliases: set[str] = set()
+
+    def add(value) -> None:
+        text = str(value or "").strip()
+        if text:
+            aliases.add(text)
+
+    add(session_key)
+    add(item.get("sessionId"))
+    add(item.get("lastTo"))
+    add(item.get("sessionFile"))
+
+    delivery = item.get("deliveryContext")
+    if isinstance(delivery, dict):
+        add(delivery.get("to"))
+
+    origin = item.get("origin")
+    if isinstance(origin, dict):
+        add(origin.get("to"))
+
+    return aliases
+
+
 def _resolve_session_append_target(*, notify_session_key: str = "", notify_session_id: str = "") -> dict[str, str] | None:
     requested_key = notify_session_key.strip()
     requested_session_id = notify_session_id.strip()
@@ -505,6 +651,8 @@ def _resolve_session_append_target(*, notify_session_key: str = "", notify_sessi
             requested_key = str(latest.get("session_key") or "").strip()
     if not requested_key and not requested_session_id:
         return None
+
+    matches: list[dict[str, str | int]] = []
 
     for store_path in _iter_session_store_paths():
         payload = _read_json_file(store_path)
@@ -519,21 +667,42 @@ def _resolve_session_append_target(*, notify_session_key: str = "", notify_sessi
                 continue
             session_key_text = str(session_key or "").strip()
             session_id = str(item.get("sessionId") or "").strip()
-            if requested_key and session_key_text != requested_key:
+            aliases = _collect_session_target_aliases(session_key_text, item)
+            if requested_key and requested_key not in aliases:
                 continue
-            if requested_session_id and session_id != requested_session_id:
+            if requested_session_id and requested_session_id != session_id:
                 continue
             session_file = str(item.get("sessionFile") or "").strip()
             if not session_file:
                 continue
-            return {
-                "mode": "session-append",
-                "session_key": session_key_text,
-                "session_id": session_id,
-                "session_file": session_file,
-                "session_store_path": str(store_path),
-            }
-    return None
+            matches.append(
+                {
+                    "mode": "session-append",
+                    "session_key": session_key_text,
+                    "session_id": session_id,
+                    "session_file": session_file,
+                    "session_store_path": str(store_path),
+                    "updated_at": int(item.get("updatedAt") or 0),
+                    "delivery_to": str(((item.get("deliveryContext") or {}) if isinstance(item.get("deliveryContext"), dict) else {}).get("to") or "").strip(),
+                    "origin_from": str(((item.get("origin") or {}) if isinstance(item.get("origin"), dict) else {}).get("from") or "").strip(),
+                    "origin_to": str(((item.get("origin") or {}) if isinstance(item.get("origin"), dict) else {}).get("to") or "").strip(),
+                }
+            )
+
+    if not matches:
+        return None
+
+    selected = max(matches, key=lambda item: int(item.get("updated_at") or 0))
+    return {
+        "mode": "session-append",
+        "session_key": str(selected["session_key"]),
+        "session_id": str(selected["session_id"]),
+        "session_file": str(selected["session_file"]),
+        "session_store_path": str(selected["session_store_path"]),
+        "delivery_to": str(selected.get("delivery_to") or ""),
+        "origin_from": str(selected.get("origin_from") or ""),
+        "origin_to": str(selected.get("origin_to") or ""),
+    }
 
 
 def _shell_command(
@@ -560,16 +729,30 @@ def _shell_command(
         args.extend(["--label", label])
     if job_id:
         args.extend(["--job-id", job_id])
-    if notification and notification.get("mode") == "clawx-im-reply":
-        args.extend(["--notify-clawx-event-id", str(notification["event_id"])])
-        args.extend(["--notify-clawx-server-url", str(notification["server_url"])])
-        args.extend(["--notify-clawx-device-id", str(notification["device_id"])])
-        args.extend(["--notify-clawx-device-token", str(notification["device_token"])])
-    elif notification and notification.get("mode") == "session-append":
-        args.extend(["--notify-session-key", str(notification["session_key"])])
-        args.extend(["--notify-session-id", str(notification.get("session_id") or "")])
-        args.extend(["--notify-session-file", str(notification["session_file"])])
-        args.extend(["--notify-session-store-path", str(notification["session_store_path"])])
+    session_notification = notification.get("session") if isinstance(notification, dict) else None
+    channel_notification = notification.get("channel") if isinstance(notification, dict) else None
+    if session_notification and session_notification.get("mode") == "session-append":
+        args.extend(["--notify-session-key", str(session_notification["session_key"])])
+        args.extend(["--notify-session-id", str(session_notification.get("session_id") or "")])
+        args.extend(["--notify-session-file", str(session_notification["session_file"])])
+        args.extend(["--notify-session-store-path", str(session_notification["session_store_path"])])
+    if channel_notification and channel_notification.get("mode") == "clawx-im-reply":
+        args.extend(["--notify-clawx-event-id", str(channel_notification["event_id"])])
+        args.extend(["--notify-clawx-server-url", str(channel_notification["server_url"])])
+        args.extend(["--notify-clawx-device-id", str(channel_notification["device_id"])])
+        args.extend(["--notify-clawx-device-token", str(channel_notification["device_token"])])
+    if channel_notification and channel_notification.get("mode") == "easyclaw-reply":
+        args.extend(["--notify-easyclaw-server-url", str(channel_notification["server_url"])])
+        args.extend(["--notify-easyclaw-device-id", str(channel_notification["device_id"])])
+        args.extend(["--notify-easyclaw-device-token", str(channel_notification["device_token"])])
+        if channel_notification.get("event_id"):
+            args.extend(["--notify-easyclaw-event-id", str(channel_notification["event_id"])])
+        if channel_notification.get("inbound_message_id"):
+            args.extend(["--notify-easyclaw-message-id", str(channel_notification["inbound_message_id"])])
+        if channel_notification.get("sender_id"):
+            args.extend(["--notify-easyclaw-sender-id", str(channel_notification["sender_id"])])
+        if channel_notification.get("bot_id"):
+            args.extend(["--notify-easyclaw-bot-id", str(channel_notification["bot_id"])])
     args.extend(_watcher_auth_args())
     return " ".join(shlex.quote(part) for part in args)
 
@@ -622,14 +805,24 @@ def build_watch_job_plan(
         notify_session_key=notify_session_key,
         notify_session_id=notify_session_id,
     )
-    clawx_notification = None if session_notification is not None else _resolve_clawx_im_reply_target()
-    notification = session_notification or clawx_notification
+    clawx_notification = _resolve_clawx_im_reply_target() if latest_session is not None and latest_session.get("channel") == "clawx-im" else None
+    easyclaw_notification = _resolve_easyclaw_reply_target(
+        latest_session=latest_session,
+        session_notification=session_notification,
+    )
+    channel_notification = clawx_notification or easyclaw_notification
+    notification = {
+        "session": session_notification,
+        "channel": channel_notification,
+    }
     if notify_session_key.strip() and session_notification is None:
         raise WatchSchedulingError(f"Unable to resolve session notification target: {notify_session_key.strip()}")
     if notify_session_id.strip() and session_notification is None:
         raise WatchSchedulingError(f"Unable to resolve session notification target: {notify_session_id.strip()}")
-    if latest_session is not None and latest_session.get("channel") == "clawx-im" and notification is None:
+    if latest_session is not None and latest_session.get("channel") == "clawx-im" and channel_notification is None:
         raise WatchSchedulingError("Unable to resolve the current ClawX IM reply target for background notification.")
+    if latest_session is not None and latest_session.get("channel") == "easyclaw" and channel_notification is None:
+        raise WatchSchedulingError("Unable to resolve the current easyclaw reply target for background notification.")
 
     watch_key = uuid4().hex
     job_name = f"veo2-watch-{task_kind}-{task_id}-{watch_key[:8]}"
@@ -659,7 +852,7 @@ def build_watch_job_plan(
         "--json",
     ]
     delivery_target = _resolve_delivery_target()
-    if notification is not None:
+    if session_notification is not None or channel_notification is not None:
         create_cli_args.append("--no-deliver")
     else:
         create_cli_args.extend(["--announce", "--channel", "last"])
@@ -683,7 +876,7 @@ def build_watch_job_plan(
         "--light-context",
         "--json",
     ]
-    if notification is not None:
+    if session_notification is not None or channel_notification is not None:
         legacy_cli_args.append("--no-deliver")
     else:
         legacy_cli_args.extend(["--announce", "--channel", "last"])
@@ -697,7 +890,15 @@ def build_watch_job_plan(
         "every": every,
         "delivery_target": delivery_target,
         "notification": notification,
-        "notification_mode": (notification or {}).get("mode") or "announce",
+        "notification_mode": ",".join(
+            mode
+            for mode in (
+                (session_notification or {}).get("mode"),
+                (channel_notification or {}).get("mode"),
+            )
+            if mode
+        )
+        or "announce",
         "every_ms": _duration_to_ms(every),
         "create_cli_args": create_cli_args,
         "legacy_cli_args": legacy_cli_args,
@@ -715,7 +916,7 @@ def build_watch_job_plan(
                 {
                     "mode": "none",
                 }
-                if notification is not None
+                if session_notification is not None or channel_notification is not None
                 else {
                     "mode": "announce",
                     "channel": "last",

@@ -233,6 +233,14 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
     set((state) => ({
       channels: state.channels.filter((c) => c.id !== channelId),
     }));
+
+    if (channelType === 'easyclaw') {
+      void window.electron.ipcRenderer.invoke('settings:setMany', {
+        easyClawUserAccount: '',
+        easyClawUserName: '',
+        easyClawUserAvatar: '',
+      }).catch(() => {});
+    }
   },
 
   connectChannel: async (channelId) => {

@@ -8,6 +8,28 @@ This plugin exposes `easyclaw` as a real OpenClaw channel and adds plugin-side Q
 - Persisted binding state under the OpenClaw state directory
 - Bridge WebSocket runtime after the binding succeeds
 - Existing Moments tools
+- Bot-side user moments viewing, liking, and commenting with shared-group permission checks
+
+## Model Tool Guidance
+
+These rules are the intended tool-calling contract for any model using this plugin:
+
+- Use `easyclaw_moments` with `action: "status"` to confirm the current device is bound before relying on other EasyClaw tools.
+- Use `easyclaw_publish_moment` or `easyclaw_moments` with `action: "publish"` only when the bot should post its own moment.
+- Use `easyclaw_view_user_moments` or `easyclaw_moments` with `action: "feed"` only for a specific target user.
+- When viewing another user's moments, pass `group_id` whenever the current conversation is in a group. This keeps permission checks scoped to the shared group.
+- Do not assume the bot can browse arbitrary users' moments. Backend access is limited to users who share a group with the bot.
+- Use `easyclaw_moment_interaction` with `action: "like"` only for a concrete target moment.
+- Use `easyclaw_moment_interaction` with `action: "comment"` only when there is a concrete comment text to send.
+- Prefer the dedicated tools `easyclaw_view_user_moments` and `easyclaw_moment_interaction` for clarity. The combined `easyclaw_moments` tool exists mainly for backward compatibility and generic orchestration.
+
+## Packaging Note
+
+This directory is the plugin copy used by `qianduan` packaging.
+
+- `qianduan/scripts/bundle-openclaw-plugins.mjs` bundles `vendor/EasyClaw-Plugin`.
+- `qianduan/scripts/after-pack.cjs` also looks for plugin manifests from bundled sources.
+- If this vendor copy is stale, packaged builds will not contain your latest EasyClaw plugin logic.
 
 ## QR binding flow
 

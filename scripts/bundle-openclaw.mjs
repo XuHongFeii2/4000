@@ -17,7 +17,9 @@
  */
 
 import 'zx/globals';
+import { fileURLToPath } from 'node:url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const OUTPUT = path.join(ROOT, 'build', 'openclaw');
 const NODE_MODULES = path.join(ROOT, 'node_modules');
@@ -31,6 +33,7 @@ const SKILL_MANIFEST_NAMES = ['SKILL.md', 'skill.md'];
 function normWin(p) {
   if (process.platform !== 'win32') return p;
   if (p.startsWith('\\\\?\\')) return p;
+  if (p.length < 240) return p;
   return '\\\\?\\' + p.replace(/\//g, '\\');
 }
 

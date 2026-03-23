@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import i18n from '@/i18n';
+import { normalizeEasyClawAvatarUrl } from '@/lib/easyclaw';
 
 type Theme = 'light' | 'dark' | 'system';
 type UpdateChannel = 'stable' | 'beta' | 'dev';
@@ -34,6 +35,9 @@ interface SettingsState {
   // UI State
   sidebarCollapsed: boolean;
   devModeUnlocked: boolean;
+  easyClawUserAccount: string;
+  easyClawUserName: string;
+  easyClawUserAvatar: string;
 
   // Setup
   setupComplete: boolean;
@@ -57,6 +61,8 @@ interface SettingsState {
   setAutoDownloadUpdate: (value: boolean) => void;
   setSidebarCollapsed: (value: boolean) => void;
   setDevModeUnlocked: (value: boolean) => void;
+  setEasyClawBinding: (payload: { account?: string; name?: string; avatar?: string }) => void;
+  clearEasyClawBinding: () => void;
   markSetupComplete: () => void;
   resetSettings: () => void;
 }
@@ -84,6 +90,9 @@ const defaultSettings = {
   autoDownloadUpdate: false,
   sidebarCollapsed: false,
   devModeUnlocked: false,
+  easyClawUserAccount: '',
+  easyClawUserName: '',
+  easyClawUserAvatar: '',
   setupComplete: false,
 };
 
@@ -95,9 +104,17 @@ export const useSettingsStore = create<SettingsState>()(
       init: async () => {
         try {
           const settings = await window.electron.ipcRenderer.invoke('settings:getAll') as Partial<typeof defaultSettings>;
-          set((state) => ({ ...state, ...settings }));
+          const normalizedAvatar = normalizeEasyClawAvatarUrl(settings.easyClawUserAvatar);
+          const normalizedSettings = {
+            ...settings,
+            easyClawUserAvatar: normalizedAvatar,
+          };
+          set((state) => ({ ...state, ...normalizedSettings }));
           if (settings.language) {
             i18n.changeLanguage(settings.language);
+          }
+          if (settings.easyClawUserAvatar !== undefined && normalizedAvatar !== settings.easyClawUserAvatar) {
+            void window.electron.ipcRenderer.invoke('settings:set', 'easyClawUserAvatar', normalizedAvatar).catch(() => {});
           }
         } catch {
           // Keep renderer-persisted settings as a fallback when the main
@@ -122,6 +139,25 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoDownloadUpdate: (autoDownloadUpdate) => set({ autoDownloadUpdate }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setDevModeUnlocked: (devModeUnlocked) => set({ devModeUnlocked }),
+      setEasyClawBinding: ({ account, name, avatar }) => {
+        const normalizedAvatar = normalizeEasyClawAvatarUrl(avatar);
+        const patch = {
+          easyClawUserAccount: account ?? '',
+          easyClawUserName: name ?? '',
+          easyClawUserAvatar: normalizedAvatar,
+        };
+        set(patch);
+        void window.electron.ipcRenderer.invoke('settings:setMany', patch).catch(() => {});
+      },
+      clearEasyClawBinding: () => {
+        const patch = {
+          easyClawUserAccount: '',
+          easyClawUserName: '',
+          easyClawUserAvatar: '',
+        };
+        set(patch);
+        void window.electron.ipcRenderer.invoke('settings:setMany', patch).catch(() => {});
+      },
       markSetupComplete: () => set({ setupComplete: true }),
       resetSettings: () => set(defaultSettings),
     }),

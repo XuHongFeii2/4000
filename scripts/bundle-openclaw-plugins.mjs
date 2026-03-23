@@ -22,6 +22,7 @@ const LOCAL_EASYCLAW_PLUGIN_DIR = path.join(ROOT, 'vendor', 'EasyClaw-Plugin');
 function normWin(p) {
   if (process.platform !== 'win32') return p;
   if (p.startsWith('\\\\?\\')) return p;
+  if (p.length < 240) return p;
   return '\\\\?\\' + p.replace(/\//g, '\\');
 }
 

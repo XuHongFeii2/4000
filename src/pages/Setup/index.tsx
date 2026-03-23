@@ -100,7 +100,7 @@ import {
   shouldInvertInDark,
   shouldShowProviderModelId,
 } from '@/lib/providers';
-import clawxIcon from '@/assets/logo.svg';
+import clawxIcon from '@/assets/appicon.png';
 
 // Use the shared provider registry for setup providers
 const providers = SETUP_PROVIDERS;
@@ -907,6 +907,10 @@ function ProviderContent({
   const isOAuth = selectedProviderData?.isOAuth ?? false;
   const supportsApiKey = selectedProviderData?.supportsApiKey ?? false;
   const useOAuthFlow = isOAuth && (!supportsApiKey || authMode === 'oauth');
+  const handleOpenProviderApiKeyPage = () => {
+    if (!selectedProviderData?.apiKeyUrl) return;
+    window.electron.ipcRenderer.invoke('shell:openExternal', selectedProviderData.apiKeyUrl);
+  };
 
   const handleValidateAndSave = async () => {
     if (!selectedProvider) return;
@@ -1116,6 +1120,19 @@ function ProviderContent({
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
+          {selectedProviderData?.apiKeyUrl ? (
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={handleOpenProviderApiKeyPage}
+              >
+                {t('settings:aiProviders.oauth.getApiKey')}
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : null}
           {/* Base URL field (for siliconflow, ollama, custom) */}
           {showBaseUrlField && (
             <div className="space-y-2">

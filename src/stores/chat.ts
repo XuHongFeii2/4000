@@ -180,6 +180,36 @@ function saveImageCache(cache: Map<string, AttachedFileMeta>): void {
 }
 
 const _imageCache = loadImageCache();
+const SESSION_LABEL_MAX_LENGTH = 50;
+
+function normalizeSessionLabelText(text: string): string {
+  return text
+    .replace(/\u2026/g, '...')
+    .replace(/\u00e2\u20ac\u00a6/g, '...')
+    .trim();
+}
+
+function truncateSessionLabel(text: string): string | undefined {
+  const normalized = normalizeSessionLabelText(text);
+  if (!normalized) return undefined;
+  return normalized.length > SESSION_LABEL_MAX_LENGTH
+    ? `${normalized.slice(0, SESSION_LABEL_MAX_LENGTH)}...`
+    : normalized;
+}
+
+function normalizeSessionLabels(labels: Record<string, string>): Record<string, string> {
+  let changed = false;
+  const normalized = Object.fromEntries(
+    Object.entries(labels).map(([key, value]) => {
+      const nextValue = normalizeSessionLabelText(value);
+      if (nextValue !== value) {
+        changed = true;
+      }
+      return [key, nextValue];
+    }),
+  );
+  return changed ? normalized : labels;
+}
 
 /** Extract plain text from message content (string or content blocks) */
 function getMessageText(content: unknown): string {
@@ -939,8 +969,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const rawSessions = Array.isArray(data.sessions) ? data.sessions : [];
         const sessions: ChatSession[] = rawSessions.map((s: Record<string, unknown>) => ({
           key: String(s.key || ''),
-          label: s.label ? String(s.label) : undefined,
-          displayName: s.displayName ? String(s.displayName) : undefined,
+          label: s.label ? normalizeSessionLabelText(String(s.label)) : undefined,
+          displayName: s.displayName ? normalizeSessionLabelText(String(s.displayName)) : undefined,
           thinkingLevel: s.thinkingLevel ? String(s.thinkingLevel) : undefined,
           model: s.model ? String(s.model) : undefined,
         })).filter((s: ChatSession) => s.key);
@@ -988,7 +1018,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ]
           : dedupedSessions;
 
-        set({ sessions: sessionsWithCurrent, currentSessionKey: nextSessionKey });
+        set((s) => ({
+          sessions: sessionsWithCurrent,
+          currentSessionKey: nextSessionKey,
+          sessionLabels: normalizeSessionLabels(s.sessionLabels),
+        }));
 
         if (currentSessionKey !== nextSessionKey) {
           get().loadHistory();
@@ -1013,9 +1047,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 set((s) => {
                   const next: Partial<typeof s> = {};
                   if (firstUser) {
-                    const labelText = getMessageText(firstUser.content).trim();
-                    if (labelText) {
-                      const truncated = labelText.length > 50 ? `${labelText.slice(0, 50)}…` : labelText;
+                    const truncated = truncateSessionLabel(getMessageText(firstUser.content));
+                    if (truncated) {
                       next.sessionLabels = { ...s.sessionLabels, [session.key]: truncated };
                     }
                   }
@@ -1232,9 +1265,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (!isMainSession) {
           const firstUserMsg = finalMessages.find((m) => m.role === 'user');
           if (firstUserMsg) {
-            const labelText = getMessageText(firstUserMsg.content).trim();
-            if (labelText) {
-              const truncated = labelText.length > 50 ? `${labelText.slice(0, 50)}…` : labelText;
+            const truncated = truncateSessionLabel(getMessageText(firstUserMsg.content));
+            if (truncated) {
               set((s) => ({
                 sessionLabels: { ...s.sessionLabels, [currentSessionKey]: truncated },
               }));
@@ -1346,8 +1378,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { sessionLabels, messages } = get();
     const isFirstMessage = !messages.slice(0, -1).some((m) => m.role === 'user');
     if (!currentSessionKey.endsWith(':main') && isFirstMessage && !sessionLabels[currentSessionKey] && trimmed) {
-      const truncated = trimmed.length > 50 ? `${trimmed.slice(0, 50)}…` : trimmed;
-      set((s) => ({ sessionLabels: { ...s.sessionLabels, [currentSessionKey]: truncated } }));
+      const truncated = truncateSessionLabel(trimmed);
+      if (truncated) {
+        set((s) => ({ sessionLabels: { ...s.sessionLabels, [currentSessionKey]: truncated } }));
+      }
     }
 
     // Mark this session as most recently active

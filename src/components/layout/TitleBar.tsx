@@ -5,7 +5,7 @@
  */
 import { useState, useEffect } from 'react';
 import { Minus, Square, X, Copy } from 'lucide-react';
-import logoSvg from '@/assets/logo.svg';
+import appIconPng from '@/assets/appicon.png';
 import { useTranslation } from 'react-i18next';
 import { appNameForLocale } from '@/config/app-config';
 
@@ -52,7 +52,7 @@ function WindowsTitleBar() {
     <div className="drag-region flex h-10 shrink-0 items-center justify-between border-b bg-background">
       {/* Left: Icon + App Name */}
       <div className="no-drag flex items-center gap-2 pl-3">
-        <img src={logoSvg} alt={appName} className="h-5 w-auto" />
+        <img src={appIconPng} alt={appName} className="h-5 w-5 rounded" />
         <span className="text-xs font-medium text-muted-foreground select-none">
           {appName}
         </span>

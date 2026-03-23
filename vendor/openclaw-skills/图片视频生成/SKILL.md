@@ -50,11 +50,13 @@ Important guidance:
 - After submission, the skill must create the watcher in the same run unless the user explicitly asks for `--no-watch`
 - The watcher must be implemented inside the skill scripts, not by modifying OpenClaw core behavior
 - The watcher checks task status every 30 seconds by default
-- Before creating the watcher, capture the current OpenClaw session key and pass it to `scripts/generate_video.py` with `--notify-session-key`
+- Before creating the watcher, pass the current OpenClaw session binding to `scripts/generate_video.py` with `--notify-session-key`
+- `--notify-session-key` may be either the real OpenClaw session key or the current delivery target such as `easyclaw:bot:11`
 - Prefer the current session key from `session_status`; do not guess another session when the current one can be resolved
 - When the task reaches a terminal state, the watcher must return the result and delete its own cron job
 - If watcher creation fails, tell the user submission succeeded but automatic notification was not armed
 - Do not promise automatic notification unless a non-empty watcher `job_id` is returned
+- Do not claim there will be fallback polling or periodic checking unless that behavior is actually implemented and armed
 - Pass only the parameters the user specified
 - Prefer guided builder flags because they validate model-specific requirements and return clearer errors
 - Use raw JSON or raw multipart mode only when the user needs fields not exposed by the guided builder
@@ -65,7 +67,7 @@ For VEO, Banana, and Sora generation:
 
 1. Run `scripts/generate_video.py`
 2. Let the script submit the request
-3. Pass the current session key with `--notify-session-key` so the watcher can write the final result back to the originating session
+3. Pass the current session binding with `--notify-session-key` so the watcher can write the final result back to the originating session
 4. Let the script create the cron watcher in the same execution by default
 5. Return the submission result and watcher state
 6. The watcher will call `scripts/cron_watch_task.py` every 30 seconds

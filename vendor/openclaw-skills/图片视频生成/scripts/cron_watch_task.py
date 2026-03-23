@@ -2,6 +2,7 @@
 import argparse
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,6 +82,112 @@ def send_clawx_im_reply(*, server_url: str, device_id: str, device_token: str, e
         raise RuntimeError(detail or f"ClawX IM reply failed with HTTP {exc.code}.") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Failed to send ClawX IM reply: {exc}") from exc
+
+
+def send_easyclaw_reply(*, server_url: str, device_id: str, device_token: str, event_id: str, content: str) -> None:
+    base_url = server_url.rstrip("/")
+    url = f"{base_url}/api/v1/openclaw/bridge/reply"
+    body = json.dumps(
+        {
+            "device_id": device_id,
+            "device_token": device_token,
+            "event_id": int(event_id),
+            "content": content,
+            "msg_type": "text",
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            _parse_json_response(response)
+    except urllib.error.HTTPError as exc:
+        payload = _parse_json_response(exc)
+        detail = ""
+        if isinstance(payload, dict):
+            detail = str(payload.get("detail") or payload.get("message") or "").strip()
+        raise RuntimeError(detail or f"easyclaw reply failed with HTTP {exc.code}.") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Failed to send easyclaw reply: {exc}") from exc
+
+
+def fetch_easyclaw_events(*, server_url: str, device_id: str, device_token: str, limit: int = 100) -> list[dict]:
+    base_url = server_url.rstrip("/")
+    url = f"{base_url}/api/v1/openclaw/bridge/inbound?device_id={urllib.parse.quote(device_id)}&device_token={urllib.parse.quote(device_token)}&limit={limit}"
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request) as response:
+            payload = _parse_json_response(response)
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"easyclaw inbound query failed with HTTP {exc.code}.") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Failed to query easyclaw inbound events: {exc}") from exc
+    if not isinstance(payload, dict):
+        return []
+    events = payload.get("events")
+    if not isinstance(events, list):
+        return []
+    return [item for item in events if isinstance(item, dict)]
+
+
+def resolve_easyclaw_event_id(
+    *,
+    server_url: str,
+    device_id: str,
+    device_token: str,
+    event_id: str,
+    message_id: str,
+    sender_id: str,
+    bot_id: str,
+) -> str:
+    resolved_event_id = str(event_id or "").strip()
+    if resolved_event_id:
+        return resolved_event_id
+
+    events = fetch_easyclaw_events(
+        server_url=server_url,
+        device_id=device_id,
+        device_token=device_token,
+    )
+
+    normalized_message_id = str(message_id or "").strip()
+    normalized_sender_id = str(sender_id or "").strip()
+    normalized_bot_id = str(bot_id or "").strip()
+    exact_matches: list[dict] = []
+    fallback_matches: list[dict] = []
+
+    for event in events:
+        current_event_id = event.get("event_id")
+        if current_event_id in (None, ""):
+            continue
+        event_sender_id = str(event.get("user_id") or "").strip()
+        event_bot_id = str(event.get("bot_id") or "").strip()
+        event_message_id = str(event.get("inbound_message_id") or "").strip()
+        event_chat_type = str(event.get("chat_type") or "").strip().lower()
+
+        if normalized_sender_id and event_sender_id != normalized_sender_id:
+            continue
+        if normalized_bot_id and event_bot_id and event_bot_id != normalized_bot_id:
+            continue
+        if event_chat_type and event_chat_type != "direct":
+            continue
+
+        if normalized_message_id and event_message_id == normalized_message_id:
+            exact_matches.append(event)
+            continue
+        fallback_matches.append(event)
+
+    candidates = exact_matches or fallback_matches
+    if not candidates:
+        raise RuntimeError("Unable to resolve an easyclaw inbound event for background notification.")
+
+    latest = max(candidates, key=lambda item: int(item.get("event_id") or 0))
+    return str(latest.get("event_id") or "").strip()
 
 
 def _read_json_file(path: Path):
@@ -295,6 +402,13 @@ def main() -> None:
     parser.add_argument("--notify-clawx-server-url", default="", help=argparse.SUPPRESS)
     parser.add_argument("--notify-clawx-device-id", default="", help=argparse.SUPPRESS)
     parser.add_argument("--notify-clawx-device-token", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--notify-easyclaw-event-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--notify-easyclaw-server-url", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--notify-easyclaw-device-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--notify-easyclaw-device-token", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--notify-easyclaw-message-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--notify-easyclaw-sender-id", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--notify-easyclaw-bot-id", default="", help=argparse.SUPPRESS)
     parser.add_argument("--notify-session-key", default="", help=argparse.SUPPRESS)
     parser.add_argument("--notify-session-id", default="", help=argparse.SUPPRESS)
     parser.add_argument("--notify-session-file", default="", help=argparse.SUPPRESS)
@@ -325,14 +439,35 @@ def main() -> None:
     else:
         message = build_failed_message(payload or {}, args.task_kind, args.label)
 
-    notification_mode = "announce"
-    if args.notify_session_file and args.notify_session_key:
-        notification_mode = "session-append"
+    notification_modes: list[str] = []
+    external_notification_succeeded = False
+
+    if (
+        args.notify_easyclaw_server_url
+        and args.notify_easyclaw_device_id
+        and args.notify_easyclaw_device_token
+        and (
+            args.notify_easyclaw_event_id
+            or args.notify_easyclaw_message_id
+            or args.notify_easyclaw_sender_id
+        )
+    ):
+        notification_modes.append("easyclaw-reply")
         try:
-            append_session_notification(
-                session_key=args.notify_session_key,
-                session_file=args.notify_session_file,
-                session_store_path=args.notify_session_store_path,
+            resolved_event_id = resolve_easyclaw_event_id(
+                server_url=args.notify_easyclaw_server_url,
+                device_id=args.notify_easyclaw_device_id,
+                device_token=args.notify_easyclaw_device_token,
+                event_id=args.notify_easyclaw_event_id,
+                message_id=args.notify_easyclaw_message_id,
+                sender_id=args.notify_easyclaw_sender_id,
+                bot_id=args.notify_easyclaw_bot_id,
+            )
+            send_easyclaw_reply(
+                server_url=args.notify_easyclaw_server_url,
+                device_id=args.notify_easyclaw_device_id,
+                device_token=args.notify_easyclaw_device_token,
+                event_id=resolved_event_id,
                 content=message,
             )
         except RuntimeError as exc:
@@ -350,8 +485,9 @@ def main() -> None:
             )
             print(NO_REPLY)
             return
+        external_notification_succeeded = True
     elif args.notify_clawx_event_id and args.notify_clawx_server_url and args.notify_clawx_device_id and args.notify_clawx_device_token:
-        notification_mode = "clawx-im-reply"
+        notification_modes.append("clawx-im-reply")
         try:
             send_clawx_im_reply(
                 server_url=args.notify_clawx_server_url,
@@ -375,6 +511,51 @@ def main() -> None:
             )
             print(NO_REPLY)
             return
+        external_notification_succeeded = True
+
+    if args.notify_session_file and args.notify_session_key:
+        notification_modes.append("session-append")
+        try:
+            append_session_notification(
+                session_key=args.notify_session_key,
+                session_file=args.notify_session_file,
+                session_store_path=args.notify_session_store_path,
+                content=message,
+            )
+        except RuntimeError as exc:
+            if not external_notification_succeeded:
+                save_state(
+                    state_path,
+                    {
+                        "notified": False,
+                        "task_id": str(args.task_id),
+                        "task_kind": args.task_kind,
+                        "status": status,
+                        "job_id": args.job_id or None,
+                        "last_notify_error": str(exc),
+                        "last_notify_attempt_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                print(NO_REPLY)
+                return
+            save_state(
+                state_path,
+                {
+                    "notified": True,
+                    "task_id": str(args.task_id),
+                    "task_kind": args.task_kind,
+                    "status": status,
+                    "job_id": args.job_id or None,
+                    "notification_mode": ",".join(notification_modes),
+                    "notified_at": datetime.now(timezone.utc).isoformat(),
+                    "session_append_error": str(exc),
+                },
+            )
+            attempt_remove_job(args.job_id or None)
+            print(NO_REPLY)
+            return
+
+    notification_mode = ",".join(notification_modes) or "announce"
 
     save_state(
         state_path,

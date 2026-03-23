@@ -29,6 +29,7 @@ const { join, dirname, basename } = require('path');
 function normWin(p) {
   if (process.platform !== 'win32') return p;
   if (p.startsWith('\\\\?\\')) return p;
+  if (p.length < 240) return p;
   return '\\\\?\\' + p.replace(/\//g, '\\');
 }
 

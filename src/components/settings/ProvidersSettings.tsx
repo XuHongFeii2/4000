@@ -40,6 +40,10 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/stores/settings';
 import { appNameForLocale } from '@/config/app-config';
 
+function openExternalUrl(url: string) {
+  return window.electron.ipcRenderer.invoke('shell:openExternal', url);
+}
+
 function normalizeFallbackProviderIds(ids?: string[]): string[] {
   return Array.from(new Set((ids ?? []).filter(Boolean)));
 }
@@ -386,6 +390,19 @@ function ProviderCard({
         {/* Key row */}
         {isEditing ? (
           <div className="space-y-4">
+            {typeInfo?.apiKeyUrl ? (
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => openExternalUrl(typeInfo.apiKeyUrl!)}
+                >
+                  {t('aiProviders.oauth.getApiKey')}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : null}
             {canEditModelConfig && (
               <div className="space-y-3 rounded-md border p-3">
                 <p className="text-sm font-medium">{t('aiProviders.sections.model')}</p>
@@ -462,19 +479,6 @@ function ProviderCard({
                   <Badge variant="secondary">{t('aiProviders.card.configured')}</Badge>
                 ) : null}
               </div>
-              {typeInfo?.apiKeyUrl && (
-                <div className="flex justify-start">
-                  <a
-                    href={typeInfo.apiKeyUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-primary hover:underline flex items-center gap-1"
-                    tabIndex={-1}
-                  >
-                    {t('aiProviders.oauth.getApiKey')} <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-              )}
               <div className="space-y-1">
                 <Label className="text-xs">{t('aiProviders.dialog.replaceApiKey')}</Label>
                 <div className="flex gap-2">
@@ -841,26 +845,39 @@ function AddProviderDialog({
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
-                {getProviderIconUrl(selectedType!) ? (
-                  <img src={getProviderIconUrl(selectedType!)} alt={typeInfo?.name} className={cn('h-7 w-7', shouldInvertInDark(selectedType!) && 'dark:invert')} />
-                ) : (
-                  <span className="text-2xl">{typeInfo?.icon}</span>
-                )}
-                <div>
-                  <p className="font-medium">{typeInfo?.id === 'custom' ? t('aiProviders.custom') : typeInfo?.name}</p>
-                  <button
-                    onClick={() => {
-                      setSelectedType(null);
-                      setValidationError(null);
-                      setBaseUrl('');
-                      setModelId('');
-                    }}
-                    className="text-sm text-muted-foreground hover:text-foreground"
-                  >
-                    {t('aiProviders.dialog.change')}
-                  </button>
+              <div className="flex items-start justify-between gap-3 p-3 rounded-lg bg-muted">
+                <div className="flex items-center gap-3">
+                  {getProviderIconUrl(selectedType!) ? (
+                    <img src={getProviderIconUrl(selectedType!)} alt={typeInfo?.name} className={cn('h-7 w-7', shouldInvertInDark(selectedType!) && 'dark:invert')} />
+                  ) : (
+                    <span className="text-2xl">{typeInfo?.icon}</span>
+                  )}
+                  <div>
+                    <p className="font-medium">{typeInfo?.id === 'custom' ? t('aiProviders.custom') : typeInfo?.name}</p>
+                    <button
+                      onClick={() => {
+                        setSelectedType(null);
+                        setValidationError(null);
+                        setBaseUrl('');
+                        setModelId('');
+                      }}
+                      className="text-sm text-muted-foreground hover:text-foreground"
+                    >
+                      {t('aiProviders.dialog.change')}
+                    </button>
+                  </div>
                 </div>
+                {typeInfo?.apiKeyUrl ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0 gap-1.5 text-xs"
+                    onClick={() => openExternalUrl(typeInfo.apiKeyUrl!)}
+                  >
+                    {t('aiProviders.oauth.getApiKey')}
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </Button>
+                ) : null}
               </div>
 
               <div className="space-y-2">
@@ -902,17 +919,6 @@ function AddProviderDialog({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="apiKey">{t('aiProviders.dialog.apiKey')}</Label>
-                    {typeInfo?.apiKeyUrl && (
-                      <a
-                        href={typeInfo.apiKeyUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline flex items-center gap-1"
-                        tabIndex={-1}
-                      >
-                        {t('aiProviders.oauth.getApiKey')} <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
                   </div>
                   <div className="relative">
                     <Input

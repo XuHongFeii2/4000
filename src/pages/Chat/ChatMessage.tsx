@@ -3,7 +3,7 @@
  * Renders user / assistant / system / toolresult messages
  * with markdown, thinking sections, images, and tool cards.
  */
-import { useState, useCallback, useEffect, memo } from 'react';
+import { useState, useCallback, useEffect, memo, type MouseEvent as ReactMouseEvent } from 'react';
 import { User, Sparkles, Copy, Check, ChevronDown, ChevronRight, Wrench, FileText, Film, Music, FileArchive, File, X, FolderOpen, ZoomIn, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -106,7 +106,7 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         )}
 
-        {/* Images — rendered ABOVE text bubble for user messages */}
+        {/* Images 鈥?rendered ABOVE text bubble for user messages */}
         {/* Images from content blocks (Gateway session data / channel push photos) */}
         {isUser && images.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -127,7 +127,7 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         )}
 
-        {/* File attachments — images above text for user, file cards below */}
+        {/* File attachments 鈥?images above text for user, file cards below */}
         {isUser && attachedFiles.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {attachedFiles.map((file, i) => {
@@ -153,7 +153,7 @@ export const ChatMessage = memo(function ChatMessage({
                   </div>
                 );
               }
-              // Non-image files → file card
+              // Non-image files 鈫?file card
               return <FileCard key={`local-${i}`} file={file} />;
             })}
           </div>
@@ -168,7 +168,7 @@ export const ChatMessage = memo(function ChatMessage({
           />
         )}
 
-        {/* Images from content blocks — assistant messages (below text) */}
+        {/* Images from content blocks 鈥?assistant messages (below text) */}
         {!isUser && images.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {images.map((img, i) => {
@@ -188,7 +188,7 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         )}
 
-        {/* File attachments — assistant messages (below text) */}
+        {/* File attachments 鈥?assistant messages (below text) */}
         {!isUser && attachedFiles.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {attachedFiles.map((file, i) => {
@@ -218,14 +218,14 @@ export const ChatMessage = memo(function ChatMessage({
           </div>
         )}
 
-        {/* Hover row for user messages — timestamp only */}
+        {/* Hover row for user messages 鈥?timestamp only */}
         {isUser && message.timestamp && (
           <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-200 select-none">
             {formatTimestamp(message.timestamp)}
           </span>
         )}
 
-        {/* Hover row for assistant messages — only when there is real text content */}
+        {/* Hover row for assistant messages 鈥?only when there is real text content */}
         {!isUser && hasText && (
           <AssistantHoverBar text={text} timestamp={message.timestamp} />
         )}
@@ -296,7 +296,7 @@ function ToolStatusBar({
   );
 }
 
-// ── Assistant hover bar (timestamp + copy, shown on group hover) ─
+// 鈹€鈹€ Assistant hover bar (timestamp + copy, shown on group hover) 鈹€
 
 function AssistantHoverBar({ text, timestamp }: { text: string; timestamp?: number }) {
   const [copied, setCopied] = useState(false);
@@ -324,7 +324,7 @@ function AssistantHoverBar({ text, timestamp }: { text: string; timestamp?: numb
   );
 }
 
-// ── Message Bubble ──────────────────────────────────────────────
+// 鈹€鈹€ Message Bubble 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function MessageBubble({
   text,
@@ -391,7 +391,7 @@ function MessageBubble({
   );
 }
 
-// ── Thinking Block ──────────────────────────────────────────────
+// 鈹€鈹€ Thinking Block 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function ThinkingBlock({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -416,7 +416,7 @@ function ThinkingBlock({ content }: { content: string }) {
   );
 }
 
-// ── File Card (for user-uploaded non-image files) ───────────────
+// 鈹€鈹€ File Card (for user-uploaded non-image files) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -435,8 +435,42 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
 }
 
 function FileCard({ file }: { file: AttachedFileMeta }) {
+  const filePath = typeof file.filePath === 'string' ? file.filePath.trim() : '';
+  const canOpen = filePath.length > 0;
+  const isExternalUrl = /^https?:\/\//i.test(filePath);
+
+  const handleOpenFile = useCallback(async () => {
+    if (!canOpen) return;
+    if (isExternalUrl) {
+      await window.electron.ipcRenderer.invoke('shell:openExternal', filePath);
+      return;
+    }
+    await window.electron.ipcRenderer.invoke('shell:openPath', filePath);
+  }, [canOpen, filePath, isExternalUrl]);
+
+  const handleShowInFolder = useCallback(async (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!canOpen || isExternalUrl) return;
+    await window.electron.ipcRenderer.invoke('shell:showItemInFolder', filePath);
+  }, [canOpen, filePath, isExternalUrl]);
+
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 bg-muted/30 max-w-[220px]">
+    <div
+      className={cn(
+        'flex items-center gap-2 rounded-lg border border-border px-3 py-2 bg-muted/30 max-w-[220px] transition-colors',
+        canOpen ? 'cursor-pointer hover:bg-muted/60' : ''
+      )}
+      onClick={canOpen ? () => { void handleOpenFile(); } : undefined}
+      role={canOpen ? 'button' : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      onKeyDown={canOpen ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          void handleOpenFile();
+        }
+      } : undefined}
+      title={canOpen ? (isExternalUrl ? '点击打开链接文件' : '点击打开文件') : file.fileName}
+    >
       <FileIcon mimeType={file.mimeType} className="h-5 w-5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 overflow-hidden">
         <p className="text-xs font-medium truncate">{file.fileName}</p>
@@ -444,11 +478,21 @@ function FileCard({ file }: { file: AttachedFileMeta }) {
           {file.fileSize > 0 ? formatFileSize(file.fileSize) : 'File'}
         </p>
       </div>
+      {canOpen && !isExternalUrl && (
+        <button
+          type="button"
+          className="ml-auto shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+          onClick={(event) => { void handleShowInFolder(event); }}
+          title="在文件夹中显示"
+        >
+          <FolderOpen className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
 
-// ── Image Thumbnail (user bubble — square crop with zoom hint) ──
+// 鈹€鈹€ Image Thumbnail (user bubble 鈥?square crop with zoom hint) 鈹€鈹€
 
 function ImageThumbnail({
   src,
@@ -479,7 +523,7 @@ function ImageThumbnail({
   );
 }
 
-// ── Image Preview Card (assistant bubble — natural size with overlay actions) ──
+// 鈹€鈹€ Image Preview Card (assistant bubble 鈥?natural size with overlay actions) 鈹€鈹€
 
 function ImagePreviewCard({
   src,
@@ -510,7 +554,7 @@ function ImagePreviewCard({
   );
 }
 
-// ── Image Lightbox ───────────────────────────────────────────────
+// 鈹€鈹€ Image Lightbox 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function ImageLightbox({
   src,
@@ -588,7 +632,7 @@ function ImageLightbox({
   );
 }
 
-// ── Tool Card ───────────────────────────────────────────────────
+// 鈹€鈹€ Tool Card 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 function ToolCard({ name, input }: { name: string; input: unknown }) {
   const [expanded, setExpanded] = useState(false);

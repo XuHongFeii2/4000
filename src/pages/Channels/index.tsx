@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useChannelsStore } from '@/stores/channels';
 import { useGatewayStore } from '@/stores/gateway';
+import { useSettingsStore } from '@/stores/settings';
 import { StatusBadge, type Status } from '@/components/common/StatusBadge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import {
@@ -45,6 +46,7 @@ import {
 } from '@/types/channel';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 function localizeEasyClawCopy(type: ChannelType | null, text: string, language: string): string {
   void language;
@@ -60,6 +62,8 @@ export function Channels() {
   const { t, i18n } = useTranslation('channels');
   const { channels, loading, error, fetchChannels, deleteChannel } = useChannelsStore();
   const gatewayStatus = useGatewayStore((state) => state.status);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedChannelType, setSelectedChannelType] = useState<ChannelType | null>(null);
@@ -102,6 +106,17 @@ export function Channels() {
       }
     };
   }, [fetchChannels, fetchConfiguredTypes]);
+
+  useEffect(() => {
+    const state = location.state as { openChannelType?: ChannelType } | null;
+    if (!state?.openChannelType) {
+      return;
+    }
+
+    setSelectedChannelType(state.openChannelType);
+    setShowAddDialog(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   // Get channel types to display
   const displayedChannelTypes = getPrimaryChannels();
@@ -369,6 +384,7 @@ interface AddChannelDialogProps {
 function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded }: AddChannelDialogProps) {
   const { t, i18n } = useTranslation('channels');
   const { addChannel } = useChannelsStore();
+  const setEasyClawBinding = useSettingsStore((state) => state.setEasyClawBinding);
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [channelName, setChannelName] = useState('');
   const [connecting, setConnecting] = useState(false);
@@ -507,6 +523,9 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
             botId?: number;
             botName?: string;
             userEmail?: string;
+            userAccount?: string;
+            userDisplayName?: string;
+            userAvatarUrl?: string;
           };
           const channelDisplayName = data.botName || easyClawDisplayName;
           const saveResult = await window.electron.ipcRenderer.invoke(
@@ -529,6 +548,12 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
           await addChannel({
             type: 'easyclaw',
             name: channelDisplayName,
+          });
+
+          setEasyClawBinding({
+            account: data.userAccount || data.userEmail || '',
+            name: data.userDisplayName || data.userAccount || data.userEmail || channelDisplayName,
+            avatar: data.userAvatarUrl || '',
           });
 
           toast.success(
@@ -580,7 +605,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       if (typeof removeErrorListener === 'function') removeErrorListener();
       window.electron.ipcRenderer.invoke('channel:cancelQrLogin', selectedType).catch(() => { });
     };
-  }, [selectedType, addChannel, channelName, onChannelAdded, t, language, isChinese]);
+  }, [selectedType, addChannel, channelName, onChannelAdded, t, language, isChinese, easyClawDisplayName, setEasyClawBinding]);
 
   /*
   useEffect(() => {

@@ -2,7 +2,7 @@
  * Electron Main Process Entry
  * Manages window creation, system tray, and IPC handlers
  */
-import { app, BrowserWindow, nativeImage, session, shell } from 'electron';
+import { app, BrowserWindow, nativeImage, session, shell, screen } from 'electron';
 import { join } from 'path';
 import { GatewayManager } from '../gateway/manager';
 import { registerIpcHandlers } from './ipc-handlers';
@@ -83,10 +83,13 @@ function getAppIcon(): Electron.NativeImage | undefined {
  */
 function createWindow(): BrowserWindow {
   const isMac = process.platform === 'darwin';
+  const workArea = screen.getPrimaryDisplay().workAreaSize;
+  const width = Math.min(Math.round(1280 * 1.5), Math.floor(workArea.width * 0.94));
+  const height = Math.min(Math.round(800 * 1.5), Math.floor(workArea.height * 0.94));
 
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width,
+    height,
     minWidth: 960,
     minHeight: 600,
     icon: getAppIcon(),
