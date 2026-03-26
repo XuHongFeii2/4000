@@ -28,6 +28,49 @@ const BUILTIN_SKILLS_SOURCES = [
   path.resolve(ROOT, '..', '..', 'shuziren-skill', 'skills'),
 ];
 const SKILL_MANIFEST_NAMES = ['SKILL.md', 'skill.md'];
+const VENDOR_SKILLS_MANIFEST = '_clawx_vendor_skills.json';
+const DEFAULT_SKILL_EXCLUDE_SET = new Set([
+  'openai-image-gen',
+  'openai-whisper',
+  'openai-whisper-api',
+  'nano-banana-pro',
+]);
+const SKILL_INCLUDE_SET = parseCsvEnvSet(process.env.OPENCLAW_SKILLS_INCLUDE);
+const ENV_SKILL_EXCLUDE_SET = parseCsvEnvSet(process.env.OPENCLAW_SKILLS_EXCLUDE);
+const EFFECTIVE_SKILL_EXCLUDE_SET = new Set([
+  ...DEFAULT_SKILL_EXCLUDE_SET,
+  ...(ENV_SKILL_EXCLUDE_SET ? Array.from(ENV_SKILL_EXCLUDE_SET) : []),
+]);
+
+function parseCsvEnvSet(value) {
+  if (typeof value !== 'string' || value.trim().length === 0) return null;
+  const items = value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? new Set(items) : null;
+}
+
+function shouldKeepSkillByName(skillName) {
+  if (SKILL_INCLUDE_SET && !SKILL_INCLUDE_SET.has(skillName)) return false;
+  if (EFFECTIVE_SKILL_EXCLUDE_SET.has(skillName)) return false;
+  return true;
+}
+
+function pruneOutputSkillsByFilter(outputDir) {
+  const outputSkillsDir = path.join(outputDir, 'skills');
+  if (!fs.existsSync(outputSkillsDir)) return 0;
+
+  let removed = 0;
+  for (const entry of fs.readdirSync(outputSkillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (shouldKeepSkillByName(entry.name)) continue;
+
+    fs.rmSync(path.join(outputSkillsDir, entry.name), { recursive: true, force: true });
+    removed++;
+  }
+  return removed;
+}
 
 // On Windows, pnpm virtual store paths can exceed MAX_PATH (260 chars).
 function normWin(p) {
@@ -71,8 +114,10 @@ function copyBuiltinSkills(outputDir) {
   fs.mkdirSync(outputSkillsDir, { recursive: true });
 
   let copiedCount = 0;
+  const copiedSlugs = [];
   for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
+    if (!shouldKeepSkillByName(entry.name)) continue;
 
     const sourceSkillDir = path.join(sourceDir, entry.name);
     const hasManifest = SKILL_MANIFEST_NAMES.some(fileName =>
@@ -96,6 +141,7 @@ function copyBuiltinSkills(outputDir) {
 
     normalizeSkillManifestCase(outputSkillDir);
     copiedCount++;
+    copiedSlugs.push(entry.name);
   }
 
   if (copiedCount === 0) {
@@ -103,10 +149,30 @@ function copyBuiltinSkills(outputDir) {
     process.exit(1);
   }
 
+  const manifestPath = path.join(outputSkillsDir, VENDOR_SKILLS_MANIFEST);
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify(
+      {
+        sourceDir,
+        skills: copiedSlugs.sort(),
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
   echo`   Bundled ${copiedCount} builtin skill(s) from ${sourceDir}`;
 }
 
 echo`📦 Bundling openclaw for electron-builder...`;
+if (SKILL_INCLUDE_SET) {
+  echo`   Skill include filter enabled: ${Array.from(SKILL_INCLUDE_SET).join(', ')}`;
+}
+if (EFFECTIVE_SKILL_EXCLUDE_SET.size > 0) {
+  echo`   Skill exclude filter enabled: ${Array.from(EFFECTIVE_SKILL_EXCLUDE_SET).join(', ')}`;
+}
 
 // 1. Resolve the real path of node_modules/openclaw (follows pnpm symlink)
 const openclawLink = path.join(NODE_MODULES, 'openclaw');
@@ -127,6 +193,10 @@ fs.mkdirSync(OUTPUT, { recursive: true });
 // 3. Copy openclaw package itself to OUTPUT root
 echo`   Copying openclaw package...`;
 fs.cpSync(openclawReal, OUTPUT, { recursive: true, dereference: true });
+const removedBundledSkills = pruneOutputSkillsByFilter(OUTPUT);
+if (removedBundledSkills > 0) {
+  echo`   Pruned ${removedBundledSkills} bundled skill(s) from openclaw package`;
+}
 copyBuiltinSkills(OUTPUT);
 
 // 4. Recursively collect ALL transitive dependencies via pnpm virtual store BFS

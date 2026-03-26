@@ -31,6 +31,8 @@ jobs:
             platform: linux
 
     runs-on: ${{ matrix.os }}
+    env:
+      OPENCLAW_SKILLS_EXCLUDE: openai-image-gen,openai-whisper,openai-whisper-api,nano-banana-pro
     
     steps:
       - name: Checkout code

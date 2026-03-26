@@ -205,10 +205,10 @@ async function initialize(): Promise<void> {
     logger.warn('Failed to repair bootstrap files:', error);
   });
 
-  // Pre-deploy built-in skills (feishu-doc, feishu-drive, feishu-perm, feishu-wiki)
-  // to ~/.openclaw/skills/ so they are immediately available without manual install.
+  // Pre-deploy bundled skills to ~/.openclaw/skills/ so they are immediately
+  // available without manual install.
   void ensureBuiltinSkillsInstalled().catch((error) => {
-    logger.warn('Failed to install built-in skills:', error);
+    logger.warn('Failed to migrate built-in skills:', error);
   });
 
   // Start Gateway automatically (this seeds missing bootstrap files with full templates)

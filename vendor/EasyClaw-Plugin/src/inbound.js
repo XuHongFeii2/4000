@@ -14,9 +14,77 @@ import {
 } from "openclaw/plugin-sdk";
 import { CHANNEL_ID } from "./accounts.js";
 import { getClawXImRuntime } from "./runtime.js";
+import { buildEasyClawGroupTarget, buildEasyClawUserTarget } from "./targets.js";
+
+const URL_PATTERN = /https?:\/\/[^\s<>"')\]}]+/gi;
+const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".avif", ".heic", ".heif"];
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv", ".3gp", ".ogv", ".ogg"];
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractUrls(text) {
+  const matches = String(text || "").match(URL_PATTERN) || [];
+  return matches.map((item) => String(item).replace(/[),.!?;:]+$/g, ""));
+}
+
+function detectMediaTypeFromPath(url) {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    if (IMAGE_EXTENSIONS.some((ext) => pathname.endsWith(ext))) return "image";
+    if (VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext))) return "video";
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function mediaTypeFromContentType(contentType) {
+  const normalized = String(contentType || "").toLowerCase().split(";")[0].trim();
+  if (!normalized) return null;
+  if (normalized.startsWith("image/")) return "image";
+  if (normalized.startsWith("video/")) return "video";
+  return null;
+}
+
+async function detectMediaTypeFromUrl(url) {
+  if (!/^https?:\/\//i.test(String(url || ""))) return null;
+
+  const byPath = detectMediaTypeFromPath(url);
+  if (byPath) return byPath;
+
+  // Prefer HEAD; fallback to tiny ranged GET for servers that disallow HEAD.
+  for (const method of ["HEAD", "GET"]) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(url, {
+        method,
+        redirect: "follow",
+        signal: controller.signal,
+        headers: method === "GET" ? { Range: "bytes=0-0" } : undefined,
+      });
+      clearTimeout(timer);
+
+      if (!response.ok && response.status !== 206 && response.status !== 416) {
+        continue;
+      }
+      const fromHeader = mediaTypeFromContentType(response.headers.get("content-type"));
+      if (fromHeader) return fromHeader;
+    } catch {
+      // Ignore and continue fallback flow.
+    }
+  }
+
+  return null;
+}
+
+function isTextOnlyMediaLinks(text) {
+  const source = String(text || "").trim();
+  if (!source) return false;
+  const stripped = source.replace(URL_PATTERN, " ").replace(/[)\],.!?;:]/g, " ").trim();
+  return stripped.length === 0;
 }
 
 function normalizeAllowlist(entries) {
@@ -88,17 +156,50 @@ function resolveGroupPeerId({ groupId, senderId, groupSessionScope }) {
 }
 
 async function deliverBridgeReply({ payload, transport, eventId, statusSink }) {
-  const combined = formatTextWithAttachmentLinks(payload.text, resolveOutboundMediaUrls(payload));
-  if (!combined) {
+  const outboundMediaUrls = resolveOutboundMediaUrls(payload);
+  const combined = formatTextWithAttachmentLinks(payload.text, outboundMediaUrls);
+  const urlCandidates = Array.from(new Set([
+    ...outboundMediaUrls,
+    ...extractUrls(combined),
+  ]));
+
+  if (!combined && urlCandidates.length === 0) {
     return;
   }
 
-  await transport.sendReply({
-    eventId,
-    content: combined,
-    msgType: "text",
-  });
-  statusSink?.({ lastOutboundAt: Date.now() });
+  const mediaReplies = [];
+  for (const url of urlCandidates) {
+    const mediaType = await detectMediaTypeFromUrl(url);
+    if (!mediaType) continue;
+    mediaReplies.push({
+      msgType: mediaType,
+      content: JSON.stringify({ url }),
+    });
+  }
+
+  if (combined && (mediaReplies.length === 0 || !isTextOnlyMediaLinks(combined))) {
+    console.log(
+      `[easyclaw/inbound] send text reply eventId=${eventId} textLength=${String(combined).length} mediaReplies=${mediaReplies.length}`,
+    );
+    await transport.sendReply({
+      eventId,
+      content: combined,
+      msgType: "text",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+  }
+
+  for (const reply of mediaReplies) {
+    console.log(
+      `[easyclaw/inbound] send media reply eventId=${eventId} msgType=${reply.msgType} content=${reply.content}`,
+    );
+    await transport.sendReply({
+      eventId,
+      content: reply.content,
+      msgType: reply.msgType,
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+  }
 }
 
 export async function handleBridgeInbound({
@@ -266,6 +367,14 @@ export async function handleBridgeInbound({
     body: bodyForAgent,
   });
 
+  const outboundTarget = isGroup
+    ? buildEasyClawGroupTarget(event.group_id)
+    : buildEasyClawUserTarget(senderId);
+
+  runtime.log?.(
+    `[easyclaw/inbound] route event_id=${event.event_id} inbound_message_id=${event.inbound_message_id ?? ""} sessionKey=${route.sessionKey} outboundTarget=${outboundTarget} isGroup=${isGroup}`,
+  );
+
   const ctxPayload = core.channel.reply.finalizeInboundContext({
     Body: body,
     BodyForAgent: bodyForAgent,
@@ -286,9 +395,15 @@ export async function handleBridgeInbound({
     Timestamp: Date.now(),
     OriginatingChannel: CHANNEL_ID,
     OriginatingTo: `easyclaw:bot:${event.bot_id}`,
+    To: outboundTarget,
+    OriginatingTo: outboundTarget,
     CommandAuthorized: access.commandAuthorized,
     WasMentioned: mentionState.mentionedBot,
   });
+
+  runtime.log?.(
+    `[easyclaw/inbound] ctx MessageSid=${ctxPayload.MessageSid ?? ""} To=${ctxPayload.To ?? ""} OriginatingTo=${ctxPayload.OriginatingTo ?? ""}`,
+  );
 
   await core.channel.session.recordInboundSession({
     storePath,
@@ -326,6 +441,7 @@ export async function handleBridgeInbound({
     },
     replyOptions: {
       onModelSelected,
+      timeoutOverrideSeconds: account.config.replyTimeoutSeconds,
       disableBlockStreaming: false,
     },
   });

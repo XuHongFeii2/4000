@@ -14,6 +14,7 @@ from schedule_task_watch import remove_task_watch
 
 NO_REPLY = "NO_REPLY"
 STATE_DIR = Path.home() / ".openclaw" / "cron" / "watchers" / "veo2-openclaw"
+DEBUG_DIR = STATE_DIR / "debug"
 
 
 def state_file_path(watch_key: str) -> Path:
@@ -35,10 +36,37 @@ def save_state(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def attempt_remove_job(job_id: str | None) -> None:
-    if not job_id:
+def debug_file_path(watch_key: str) -> Path:
+    safe_key = "".join(char for char in str(watch_key or "") if char.isalnum() or char in ("-", "_"))
+    return DEBUG_DIR / f"{safe_key}.log"
+
+
+def append_debug_log(watch_key: str, event: str, **fields) -> None:
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": str(event or "").strip() or "log",
+        **fields,
+    }
+    path = debug_file_path(watch_key)
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False))
+        handle.write("\n")
+
+
+def attempt_remove_job(job_id: str | None, job_name: str | None) -> None:
+    if not job_id and not job_name:
         return
-    remove_task_watch(job_id)
+    remove_task_watch(job_id, job_name=job_name)
+
+
+def derive_job_name(task_kind: str, task_id: str, watch_key: str) -> str:
+    normalized_task_kind = str(task_kind or "").strip()
+    normalized_task_id = str(task_id or "").strip()
+    normalized_watch_key = str(watch_key or "").strip()
+    if not normalized_task_kind or not normalized_task_id or not normalized_watch_key:
+        return ""
+    return f"veo2-watch-{normalized_task_kind}-{normalized_task_id}-{normalized_watch_key[:8]}"
 
 
 def _parse_json_response(response):
@@ -84,7 +112,15 @@ def send_clawx_im_reply(*, server_url: str, device_id: str, device_token: str, e
         raise RuntimeError(f"Failed to send ClawX IM reply: {exc}") from exc
 
 
-def send_easyclaw_reply(*, server_url: str, device_id: str, device_token: str, event_id: str, content: str) -> None:
+def send_easyclaw_reply(
+    *,
+    server_url: str,
+    device_id: str,
+    device_token: str,
+    event_id: str,
+    content: str,
+    msg_type: str = "text",
+) -> None:
     base_url = server_url.rstrip("/")
     url = f"{base_url}/api/v1/openclaw/bridge/reply"
     body = json.dumps(
@@ -93,7 +129,7 @@ def send_easyclaw_reply(*, server_url: str, device_id: str, device_token: str, e
             "device_token": device_token,
             "event_id": int(event_id),
             "content": content,
-            "msg_type": "text",
+            "msg_type": msg_type or "text",
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -135,6 +171,54 @@ def fetch_easyclaw_events(*, server_url: str, device_id: str, device_token: str,
     return [item for item in events if isinstance(item, dict)]
 
 
+def _normalize_positive_int_string(value: object) -> str:
+    text = str(value or "").strip()
+    if text.isdigit() and int(text) >= 1:
+        return text
+    return ""
+
+
+def fetch_easyclaw_event_lookup(
+    *,
+    server_url: str,
+    device_id: str,
+    device_token: str,
+    message_id: str,
+    sender_id: str,
+    bot_id: str,
+) -> dict | None:
+    normalized_message_id = _normalize_positive_int_string(message_id)
+    params = {
+        "device_id": device_id,
+        "device_token": device_token,
+        "chat_type": "direct",
+    }
+    if normalized_message_id:
+        params["inbound_message_id"] = normalized_message_id
+    numeric_sender_id = _normalize_positive_int_string(sender_id)
+    numeric_bot_id = _normalize_positive_int_string(bot_id)
+    if not normalized_message_id and not numeric_sender_id and not numeric_bot_id:
+        return None
+    if numeric_sender_id:
+        params["user_id"] = numeric_sender_id
+    if numeric_bot_id:
+        params["bot_id"] = numeric_bot_id
+    query = urllib.parse.urlencode(params)
+    base_url = server_url.rstrip("/")
+    url = f"{base_url}/api/v1/openclaw/bridge/event-lookup?{query}"
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request) as response:
+            payload = _parse_json_response(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code in {404, 405}:
+            return None
+        raise RuntimeError(f"easyclaw event lookup failed with HTTP {exc.code}.") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Failed to query easyclaw event lookup: {exc}") from exc
+    return payload if isinstance(payload, dict) else None
+
+
 def resolve_easyclaw_event_id(
     *,
     server_url: str,
@@ -149,17 +233,31 @@ def resolve_easyclaw_event_id(
     if resolved_event_id:
         return resolved_event_id
 
+    normalized_message_id = _normalize_positive_int_string(message_id)
+    numeric_sender_id = _normalize_positive_int_string(sender_id)
+    numeric_bot_id = _normalize_positive_int_string(bot_id)
+    if not normalized_message_id and not numeric_sender_id and not numeric_bot_id:
+        raise RuntimeError("Missing easyclaw event context for background notification.")
+
+    historical_event = fetch_easyclaw_event_lookup(
+        server_url=server_url,
+        device_id=device_id,
+        device_token=device_token,
+        message_id=normalized_message_id,
+        sender_id=numeric_sender_id,
+        bot_id=numeric_bot_id,
+    )
+    historical_event_id = str((historical_event or {}).get("event_id") or "").strip()
+    if historical_event_id:
+        return historical_event_id
+
+    exact_matches: list[dict] = []
+    contextual_matches: list[dict] = []
     events = fetch_easyclaw_events(
         server_url=server_url,
         device_id=device_id,
         device_token=device_token,
     )
-
-    normalized_message_id = str(message_id or "").strip()
-    normalized_sender_id = str(sender_id or "").strip()
-    normalized_bot_id = str(bot_id or "").strip()
-    exact_matches: list[dict] = []
-    fallback_matches: list[dict] = []
 
     for event in events:
         current_event_id = event.get("event_id")
@@ -170,9 +268,9 @@ def resolve_easyclaw_event_id(
         event_message_id = str(event.get("inbound_message_id") or "").strip()
         event_chat_type = str(event.get("chat_type") or "").strip().lower()
 
-        if normalized_sender_id and event_sender_id != normalized_sender_id:
+        if numeric_sender_id and event_sender_id != numeric_sender_id:
             continue
-        if normalized_bot_id and event_bot_id and event_bot_id != normalized_bot_id:
+        if numeric_bot_id and event_bot_id and event_bot_id != numeric_bot_id:
             continue
         if event_chat_type and event_chat_type != "direct":
             continue
@@ -180,13 +278,17 @@ def resolve_easyclaw_event_id(
         if normalized_message_id and event_message_id == normalized_message_id:
             exact_matches.append(event)
             continue
-        fallback_matches.append(event)
-
-    candidates = exact_matches or fallback_matches
-    if not candidates:
+        if not normalized_message_id:
+            contextual_matches.append(event)
+    if exact_matches:
+        latest = max(exact_matches, key=lambda item: int(item.get("event_id") or 0))
+        return str(latest.get("event_id") or "").strip()
+    if contextual_matches:
+        latest = max(contextual_matches, key=lambda item: int(item.get("event_id") or 0))
+        return str(latest.get("event_id") or "").strip()
+    if not exact_matches:
         raise RuntimeError("Unable to resolve an easyclaw inbound event for background notification.")
-
-    latest = max(candidates, key=lambda item: int(item.get("event_id") or 0))
+    latest = max(exact_matches, key=lambda item: int(item.get("event_id") or 0))
     return str(latest.get("event_id") or "").strip()
 
 
@@ -372,6 +474,22 @@ def build_success_message(payload: dict, task_kind: str, label: str) -> str:
     return "\n".join(lines)
 
 
+def build_easyclaw_media_replies(payload: dict) -> list[dict[str, str]]:
+    replies: list[dict[str, str]] = []
+    for media in _collect_media(payload)[:3]:
+        media_type = str(media.get("type") or "").strip().lower()
+        media_url = str(media.get("url") or "").strip()
+        if media_type not in {"image", "video"} or not media_url:
+            continue
+        replies.append(
+            {
+                "msg_type": media_type,
+                "content": json.dumps({"url": media_url}, ensure_ascii=False),
+            }
+        )
+    return replies
+
+
 def build_failed_message(payload: dict, task_kind: str, label: str) -> str:
     resource_label = label or task_kind
     task_id = _first_non_empty(payload, ("request_id", "requestId", "task_id", "taskId", "id")) or "-"
@@ -393,6 +511,7 @@ def main() -> None:
     parser.add_argument("--task-kind", required=True)
     parser.add_argument("--label", default="")
     parser.add_argument("--watch-key", required=True)
+    parser.add_argument("--job-name", default="")
     parser.add_argument("--job-id", default="")
     parser.add_argument("--base-url", default="", help=argparse.SUPPRESS)
     parser.add_argument("--api-token", default="", help=argparse.SUPPRESS)
@@ -414,6 +533,7 @@ def main() -> None:
     parser.add_argument("--notify-session-file", default="", help=argparse.SUPPRESS)
     parser.add_argument("--notify-session-store-path", default="", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    effective_job_name = args.job_name or derive_job_name(args.task_kind, args.task_id, args.watch_key)
 
     configure_client(
         base_url=args.base_url or None,
@@ -425,21 +545,38 @@ def main() -> None:
     state_path = state_file_path(args.watch_key)
     state = load_state(state_path)
     if state.get("notified"):
+        append_debug_log(args.watch_key, "skip_already_notified", state=state)
         print(NO_REPLY)
         return
 
     payload = request_json("GET", f"/veo2/custom_video/fetch/{args.task_id}")
     status = terminal_status(payload) or "running"
+    append_debug_log(
+        args.watch_key,
+        "fetch_status",
+        task_id=str(args.task_id),
+        task_kind=args.task_kind,
+        status=status,
+        notify_easyclaw_server_url=args.notify_easyclaw_server_url or "",
+        notify_easyclaw_event_id=args.notify_easyclaw_event_id or "",
+        notify_easyclaw_message_id=args.notify_easyclaw_message_id or "",
+        notify_easyclaw_sender_id=args.notify_easyclaw_sender_id or "",
+        notify_easyclaw_bot_id=args.notify_easyclaw_bot_id or "",
+    )
     if status == "running":
         print(NO_REPLY)
         return
 
     if status == "success":
         message = build_success_message(payload or {}, args.task_kind, args.label)
+        media_replies = build_easyclaw_media_replies(payload or {})
     else:
         message = build_failed_message(payload or {}, args.task_kind, args.label)
+        media_replies = []
 
     notification_modes: list[str] = []
+    notification_errors: list[str] = []
+    external_notification_requested = False
     external_notification_succeeded = False
 
     if (
@@ -452,6 +589,7 @@ def main() -> None:
             or args.notify_easyclaw_sender_id
         )
     ):
+        external_notification_requested = True
         notification_modes.append("easyclaw-reply")
         try:
             resolved_event_id = resolve_easyclaw_event_id(
@@ -463,6 +601,13 @@ def main() -> None:
                 sender_id=args.notify_easyclaw_sender_id,
                 bot_id=args.notify_easyclaw_bot_id,
             )
+            append_debug_log(
+                args.watch_key,
+                "easyclaw_resolved_event",
+                resolved_event_id=resolved_event_id,
+                message_length=len(message),
+                media_count=len(media_replies),
+            )
             send_easyclaw_reply(
                 server_url=args.notify_easyclaw_server_url,
                 device_id=args.notify_easyclaw_device_id,
@@ -470,23 +615,40 @@ def main() -> None:
                 event_id=resolved_event_id,
                 content=message,
             )
-        except RuntimeError as exc:
-            save_state(
-                state_path,
-                {
-                    "notified": False,
-                    "task_id": str(args.task_id),
-                    "task_kind": args.task_kind,
-                    "status": status,
-                    "job_id": args.job_id or None,
-                    "last_notify_error": str(exc),
-                    "last_notify_attempt_at": datetime.now(timezone.utc).isoformat(),
-                },
+            append_debug_log(
+                args.watch_key,
+                "easyclaw_text_sent",
+                resolved_event_id=resolved_event_id,
+                message_length=len(message),
             )
-            print(NO_REPLY)
-            return
-        external_notification_succeeded = True
+            for media_reply in media_replies:
+                append_debug_log(
+                    args.watch_key,
+                    "easyclaw_media_sending",
+                    resolved_event_id=resolved_event_id,
+                    msg_type=media_reply["msg_type"],
+                    content=media_reply["content"],
+                )
+                send_easyclaw_reply(
+                    server_url=args.notify_easyclaw_server_url,
+                    device_id=args.notify_easyclaw_device_id,
+                    device_token=args.notify_easyclaw_device_token,
+                    event_id=resolved_event_id,
+                    content=media_reply["content"],
+                    msg_type=media_reply["msg_type"],
+                )
+                append_debug_log(
+                    args.watch_key,
+                    "easyclaw_media_sent",
+                    resolved_event_id=resolved_event_id,
+                    msg_type=media_reply["msg_type"],
+                )
+            external_notification_succeeded = True
+        except RuntimeError as exc:
+            append_debug_log(args.watch_key, "easyclaw_reply_failed", error=str(exc))
+            notification_errors.append(f"easyclaw-reply: {exc}")
     elif args.notify_clawx_event_id and args.notify_clawx_server_url and args.notify_clawx_device_id and args.notify_clawx_device_token:
+        external_notification_requested = True
         notification_modes.append("clawx-im-reply")
         try:
             send_clawx_im_reply(
@@ -496,22 +658,34 @@ def main() -> None:
                 event_id=args.notify_clawx_event_id,
                 content=message,
             )
+            external_notification_succeeded = True
         except RuntimeError as exc:
-            save_state(
-                state_path,
-                {
-                    "notified": False,
-                    "task_id": str(args.task_id),
-                    "task_kind": args.task_kind,
-                    "status": status,
-                    "job_id": args.job_id or None,
-                    "last_notify_error": str(exc),
-                    "last_notify_attempt_at": datetime.now(timezone.utc).isoformat(),
-                },
-            )
-            print(NO_REPLY)
-            return
-        external_notification_succeeded = True
+            notification_errors.append(f"clawx-im-reply: {exc}")
+
+    if external_notification_requested and not external_notification_succeeded:
+        append_debug_log(
+            args.watch_key,
+            "external_notification_failed",
+            notification_modes=notification_modes,
+            notification_errors=notification_errors,
+        )
+        notification_mode = ",".join(notification_modes) or "announce"
+        save_state(
+            state_path,
+            {
+                "notified": False,
+                "task_id": str(args.task_id),
+                "task_kind": args.task_kind,
+                "status": status,
+                "job_name": effective_job_name or None,
+                "job_id": args.job_id or None,
+                "notification_mode": notification_mode,
+                "last_notify_error": "; ".join(notification_errors) or "Notification failed.",
+                "last_notify_attempt_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        print(NO_REPLY)
+        return
 
     if args.notify_session_file and args.notify_session_key:
         notification_modes.append("session-append")
@@ -523,7 +697,9 @@ def main() -> None:
                 content=message,
             )
         except RuntimeError as exc:
+            notification_errors.append(f"session-append: {exc}")
             if not external_notification_succeeded:
+                notification_mode = ",".join(notification_modes) or "announce"
                 save_state(
                     state_path,
                     {
@@ -531,13 +707,16 @@ def main() -> None:
                         "task_id": str(args.task_id),
                         "task_kind": args.task_kind,
                         "status": status,
+                        "job_name": effective_job_name or None,
                         "job_id": args.job_id or None,
-                        "last_notify_error": str(exc),
+                        "notification_mode": notification_mode,
+                        "last_notify_error": "; ".join(notification_errors) or "Notification failed.",
                         "last_notify_attempt_at": datetime.now(timezone.utc).isoformat(),
                     },
                 )
                 print(NO_REPLY)
                 return
+            notification_mode = ",".join(notification_modes) or "announce"
             save_state(
                 state_path,
                 {
@@ -545,13 +724,14 @@ def main() -> None:
                     "task_id": str(args.task_id),
                     "task_kind": args.task_kind,
                     "status": status,
+                    "job_name": effective_job_name or None,
                     "job_id": args.job_id or None,
-                    "notification_mode": ",".join(notification_modes),
+                    "notification_mode": notification_mode,
                     "notified_at": datetime.now(timezone.utc).isoformat(),
-                    "session_append_error": str(exc),
+                    "notification_errors": notification_errors,
                 },
             )
-            attempt_remove_job(args.job_id or None)
+            attempt_remove_job(args.job_id or None, effective_job_name or None)
             print(NO_REPLY)
             return
 
@@ -564,12 +744,23 @@ def main() -> None:
             "task_id": str(args.task_id),
             "task_kind": args.task_kind,
             "status": status,
+            "job_name": effective_job_name or None,
             "job_id": args.job_id or None,
             "notification_mode": notification_mode,
             "notified_at": datetime.now(timezone.utc).isoformat(),
+            **({"notification_errors": notification_errors} if notification_errors else {}),
         },
     )
-    attempt_remove_job(args.job_id or None)
+    append_debug_log(
+        args.watch_key,
+        "completed",
+        notification_modes=notification_modes,
+        notification_errors=notification_errors,
+        external_notification_requested=external_notification_requested,
+        external_notification_succeeded=external_notification_succeeded,
+        status=status,
+    )
+    attempt_remove_job(args.job_id or None, effective_job_name or None)
     if notification_mode != "announce":
         print(NO_REPLY)
         return

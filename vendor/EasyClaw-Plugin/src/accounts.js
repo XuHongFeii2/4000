@@ -4,6 +4,7 @@ import { readPersistedBinding } from "./state.js";
 export const CHANNEL_ID = "easyclaw";
 export const LEGACY_CHANNEL_ID = "clawx-im";
 const SUPPORTED_GROUP_SESSION_SCOPES = new Set(["group", "group_sender"]);
+const DEFAULT_REPLY_TIMEOUT_SECONDS = 900;
 
 function toTrimmedString(value) {
   if (typeof value !== "string") {
@@ -44,6 +45,19 @@ function normalizeOptionalInt(value) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
 }
 
+function normalizeTimeoutSeconds(value, fallback) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return fallback;
+}
+
 export function listBridgeAccountIds() {
   return [DEFAULT_ACCOUNT_ID];
 }
@@ -69,6 +83,10 @@ export function resolveBridgeAccount({ cfg, accountId }) {
   const groupSessionScope = SUPPORTED_GROUP_SESSION_SCOPES.has(channelConfig.groupSessionScope)
     ? channelConfig.groupSessionScope
     : "group";
+  const replyTimeoutSeconds = normalizeTimeoutSeconds(
+    channelConfig.replyTimeoutSeconds,
+    normalizeTimeoutSeconds(persisted?.replyTimeoutSeconds, DEFAULT_REPLY_TIMEOUT_SECONDS),
+  );
   const allowFallback = dmPolicy === "open" ? ["*"] : [];
 
   return {
@@ -90,6 +108,7 @@ export function resolveBridgeAccount({ cfg, accountId }) {
       groupPolicy,
       requireMention,
       groupSessionScope,
+      replyTimeoutSeconds,
       allowFrom: normalizeAllowFrom(channelConfig.allowFrom, allowFallback),
       groupAllowFrom: normalizeAllowFrom(channelConfig.groupAllowFrom),
       pollIntervalMs:

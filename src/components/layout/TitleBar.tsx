@@ -52,7 +52,7 @@ function WindowsTitleBar() {
     <div className="drag-region flex h-10 shrink-0 items-center justify-between border-b bg-background">
       {/* Left: Icon + App Name */}
       <div className="no-drag flex items-center gap-2 pl-3">
-        <img src={appIconPng} alt={appName} className="h-5 w-5 rounded" />
+        <img src={appIconPng} alt={appName} className="h-5 w-5 rounded-md" />
         <span className="text-xs font-medium text-muted-foreground select-none">
           {appName}
         </span>

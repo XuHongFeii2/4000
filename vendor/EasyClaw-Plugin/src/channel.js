@@ -18,6 +18,7 @@ import {
 import { loginWithTerminalQr, logoutBinding, startBindingQrLogin, waitForBindingQrLogin } from "./binding.js";
 import { monitorBridgeProvider } from "./monitor.js";
 import { easyClawOnboardingAdapter } from "./onboarding.js";
+import { easyClawOutbound } from "./outbound.js";
 
 const meta = {
   id: CHANNEL_ID,
@@ -90,6 +91,7 @@ const channelSchema = {
         type: "string",
         enum: ["group", "group_sender"],
       },
+      replyTimeoutSeconds: { type: "integer", minimum: 0 },
       pollIntervalMs: { type: "integer", minimum: 1000 },
       batchSize: { type: "integer", minimum: 1, maximum: 100 },
     },
@@ -173,6 +175,7 @@ export const easyClawPlugin = {
       throw new Error("openclaw中文版 media send is not wired yet. Use the bridge reply flow instead.");
     },
   },
+  outbound: easyClawOutbound,
   status: {
     defaultRuntime: createDefaultChannelRuntimeState(DEFAULT_ACCOUNT_ID, {
       connected: false,

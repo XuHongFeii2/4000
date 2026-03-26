@@ -340,13 +340,13 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
         )}
 
         {/* Input Row */}
-        <div className={`flex items-end gap-2 ${dragOver ? 'ring-2 ring-primary rounded-lg' : ''}`}>
+        <div className={`flex items-end gap-2 ${dragOver ? 'ring-2 ring-primary rounded-2xl' : ''}`}>
 
           {/* Attach Button */}
           <Button
             variant="ghost"
             size="icon"
-            className="shrink-0 h-[44px] w-[44px]"
+            className="shrink-0 h-[44px] w-[44px] rounded-2xl"
             onClick={pickFiles}
             disabled={disabled || sending}
             title="Attach files"
@@ -370,7 +370,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
               onPaste={handlePaste}
               placeholder={disabled ? 'Gateway not connected...' : 'Message (Enter to send, Shift+Enter for new line)'}
               disabled={disabled}
-              className="min-h-[44px] max-h-[200px] resize-none pr-4"
+              className="min-h-[44px] max-h-[200px] resize-none rounded-2xl pr-4"
               rows={1}
             />
           </div>
@@ -380,7 +380,7 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
             onClick={sending ? handleStop : handleSend}
             disabled={sending ? !canStop : !canSend}
             size="icon"
-            className="shrink-0 h-[44px] w-[44px]"
+            className="shrink-0 h-[44px] w-[44px] rounded-2xl"
             variant={sending ? 'destructive' : 'default'}
             title={sending ? 'Stop' : 'Send'}
           >
@@ -408,10 +408,10 @@ function AttachmentPreview({
   const isImage = attachment.mimeType.startsWith('image/') && attachment.preview;
 
   return (
-    <div className="relative group rounded-lg overflow-hidden border border-border">
+    <div className="relative group rounded-2xl overflow-hidden border border-border bg-background/80 shadow-sm">
       {isImage ? (
         // Image thumbnail
-        <div className="w-16 h-16">
+        <div className="h-16 w-16 rounded-2xl">
           <img
             src={attachment.preview!}
             alt={attachment.fileName}
@@ -420,7 +420,7 @@ function AttachmentPreview({
         </div>
       ) : (
         // Generic file card
-        <div className="flex items-center gap-2 px-3 py-2 bg-muted/50 max-w-[200px]">
+        <div className="flex max-w-[200px] items-center gap-2 rounded-2xl bg-muted/50 px-3 py-2">
           <FileIcon mimeType={attachment.mimeType} className="h-5 w-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 overflow-hidden">
             <p className="text-xs font-medium truncate">{attachment.fileName}</p>

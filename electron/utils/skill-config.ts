@@ -5,7 +5,7 @@
  *
  * All file I/O uses async fs/promises to avoid blocking the main thread.
  */
-import { readFile, writeFile, access, cp, mkdir } from 'fs/promises';
+import { readFile, writeFile, access, cp, mkdir, readdir, rename, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { constants } from 'fs';
 import { join } from 'path';
@@ -14,6 +14,7 @@ import { getOpenClawDir } from './paths';
 import { logger } from './logger';
 
 const OPENCLAW_CONFIG_PATH = join(homedir(), '.openclaw', 'openclaw.json');
+const VENDOR_SKILLS_MANIFEST = '_clawx_vendor_skills.json';
 
 interface SkillEntry {
     enabled?: boolean;
@@ -136,49 +137,107 @@ export async function getAllSkillConfigs(): Promise<Record<string, SkillEntry>> 
     return config.skills?.entries || {};
 }
 
-/**
- * Built-in skills bundled with ClawX that should be pre-deployed to
- * ~/.openclaw/skills/ on first launch.  These come from the openclaw package's
- * extensions directory and are available in both dev and packaged builds.
- */
-const BUILTIN_SKILLS = [
-    { slug: 'feishu-doc',   sourceExtension: 'feishu' },
-    { slug: 'feishu-drive', sourceExtension: 'feishu' },
-    { slug: 'feishu-perm',  sourceExtension: 'feishu' },
-    { slug: 'feishu-wiki',  sourceExtension: 'feishu' },
-] as const;
+async function moveDirWithFallback(sourceDir: string, targetDir: string): Promise<void> {
+    try {
+        await rename(sourceDir, targetDir);
+        return;
+    } catch {
+        await mkdir(targetDir, { recursive: true });
+        await cp(sourceDir, targetDir, { recursive: true });
+        await rm(sourceDir, { recursive: true, force: true });
+    }
+}
+
+async function loadVendorSkillSlugs(sourceRoot: string): Promise<Set<string>> {
+    const manifestPath = join(sourceRoot, VENDOR_SKILLS_MANIFEST);
+    if (!existsSync(manifestPath)) {
+        return new Set();
+    }
+    try {
+        const raw = await readFile(manifestPath, 'utf-8');
+        const parsed = JSON.parse(raw) as { skills?: unknown };
+        if (!Array.isArray(parsed.skills)) {
+            return new Set();
+        }
+        return new Set(
+            parsed.skills
+                .map((entry) => String(entry).trim())
+                .filter(Boolean)
+        );
+    } catch (error) {
+        logger.warn(`Failed to read vendor skills manifest: ${manifestPath}`, error);
+        return new Set();
+    }
+}
+
+async function migrateSkillsFromDir(sourceRoot: string, targetRoot: string, allowedSlugs: Set<string>): Promise<number> {
+    if (!existsSync(sourceRoot)) {
+        return 0;
+    }
+    if (allowedSlugs.size === 0) {
+        return 0;
+    }
+
+    await mkdir(targetRoot, { recursive: true });
+    let movedCount = 0;
+
+    try {
+        const dirents = await readdir(sourceRoot, { withFileTypes: true });
+
+        for (const entry of dirents) {
+            if (!entry.isDirectory()) {
+                continue;
+            }
+
+            const slug = entry.name;
+            if (!allowedSlugs.has(slug)) {
+                continue; // keep non-vendor skills in source directory
+            }
+            const sourceDir = join(sourceRoot, slug);
+            const sourceManifest = join(sourceDir, 'SKILL.md');
+            if (!existsSync(sourceManifest)) {
+                continue;
+            }
+
+            const targetDir = join(targetRoot, slug);
+            const targetManifest = join(targetDir, 'SKILL.md');
+            if (existsSync(targetManifest)) {
+                await rm(sourceDir, { recursive: true, force: true });
+                continue;
+            }
+
+            try {
+                await moveDirWithFallback(sourceDir, targetDir);
+                movedCount++;
+                logger.info(`Migrated bundled skill: ${slug} -> ${targetDir}`);
+            } catch (error) {
+                logger.warn(`Failed to migrate bundled skill ${slug}:`, error);
+            }
+        }
+
+    } catch (error) {
+        logger.warn(`Failed to migrate bundled skills from ${sourceRoot}:`, error);
+    }
+
+    return movedCount;
+}
 
 /**
- * Ensure built-in skills are deployed to ~/.openclaw/skills/<slug>/.
- * Skips any skill that already has a SKILL.md present (idempotent).
- * Runs at app startup; all errors are logged and swallowed so they never
- * block the normal startup flow.
+ * Ensure bundled skills are migrated to ~/.openclaw/skills/<slug>/.
+ * Only skills listed by <openclaw>/skills/_clawx_vendor_skills.json
+ * (generated during bundle from vendor/openclaw-skills) are migrated.
+ * Other source skills remain in place.
  */
 export async function ensureBuiltinSkillsInstalled(): Promise<void> {
     const skillsRoot = join(homedir(), '.openclaw', 'skills');
+    const openclawDir = getOpenClawDir();
 
-    for (const { slug, sourceExtension } of BUILTIN_SKILLS) {
-        const targetDir = join(skillsRoot, slug);
-        const targetManifest = join(targetDir, 'SKILL.md');
+    const primarySource = join(openclawDir, 'skills');
+    const vendorSkillSlugs = await loadVendorSkillSlugs(primarySource);
 
-        if (existsSync(targetManifest)) {
-            continue; // already installed
-        }
+    const installedFromPrimary = await migrateSkillsFromDir(primarySource, skillsRoot, vendorSkillSlugs);
 
-        const openclawDir = getOpenClawDir();
-        const sourceDir = join(openclawDir, 'extensions', sourceExtension, 'skills', slug);
-
-        if (!existsSync(join(sourceDir, 'SKILL.md'))) {
-            logger.warn(`Built-in skill source not found, skipping: ${sourceDir}`);
-            continue;
-        }
-
-        try {
-            await mkdir(targetDir, { recursive: true });
-            await cp(sourceDir, targetDir, { recursive: true });
-            logger.info(`Installed built-in skill: ${slug} -> ${targetDir}`);
-        } catch (error) {
-            logger.warn(`Failed to install built-in skill ${slug}:`, error);
-        }
-    }
+    logger.info(
+        `Bundled vendor skills migration finished: moved=${installedFromPrimary}, totalVendor=${vendorSkillSlugs.size}, target=${skillsRoot}`
+    );
 }

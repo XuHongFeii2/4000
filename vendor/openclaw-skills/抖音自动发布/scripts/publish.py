@@ -38,7 +38,12 @@ class TeeStream:
 
     def write(self, data):
         for stream in self.streams:
-            stream.write(data)
+            try:
+                stream.write(data)
+            except UnicodeEncodeError:
+                encoding = getattr(stream, "encoding", None) or "utf-8"
+                safe_data = data.encode(encoding, errors="replace").decode(encoding, errors="replace")
+                stream.write(safe_data)
             stream.flush()
         return len(data)
 
@@ -159,6 +164,7 @@ class DouyinUploader:
         self.schedule_time = schedule_time
         self.cookie_file = Path(cookie_file)
         self.headless = headless
+        self.cover_ready = False
         
         # 验证文件
         if not self.video_path.exists():
@@ -381,53 +387,101 @@ class DouyinUploader:
         """设置视频封面。"""
         try:
             await self._refresh_before_cover_setup(page)
-            await self._click_cover_mode_with_retry(page, button_text="设置横封面")
-
-            await page.locator(
-                "div[class^='semi-upload upload'] >> input.semi-upload-hidden-input"
-            ).set_input_files(str(self.cover_path))
-            await asyncio.sleep(2)
-
-            done_clicked = False
-            for _ in range(3):
-                done_button = page.get_by_role("button", name="完成")
-                if await done_button.count() > 0:
-                    await done_button.first.click(force=True)
-                    done_clicked = True
-                else:
-                    legacy_done = page.locator("div#tooltip-container button:visible:has-text('完成')")
-                    if await legacy_done.count() > 0:
-                        await legacy_done.first.click(force=True)
-                        done_clicked = True
-
-                if done_clicked:
-                    print("   封面设置完成")
-                    break
-
-                confirm_button = page.get_by_role("button", name="确定")
-                if await confirm_button.count() > 0:
-                    await confirm_button.first.click(force=True)
-                    done_clicked = True
-                    print("   封面设置完成（确定）")
-                    break
-
-                await asyncio.sleep(1)
-
-            if not done_clicked:
-                raise RuntimeError("未找到可点击的“完成”或“确定”按钮，无法确认封面设置")
-
-            await self._wait_for_cover_dialog_closed(page)
-            await page.wait_for_selector("div.extractFooter", state="detached", timeout=5000)
+            await self._apply_custom_cover_without_refresh(page)
         except Exception as e:
             print(f"   封面设置失败: {e}，将使用自动推荐封面")
             await self._set_recommended_cover(page)
 
     async def _open_cover_dialog(self, page: Page) -> None:
-        cover_btn = page.get_by_text("选择封面")
-        if await cover_btn.count() == 0:
-            raise RuntimeError("未找到“选择封面”按钮")
-        await cover_btn.first.click()
-        await page.wait_for_selector("div.dy-creator-content-modal", timeout=10000)
+        deadline = asyncio.get_running_loop().time() + 60
+        last_reason = "未开始查找"
+
+        while asyncio.get_running_loop().time() < deadline:
+            result = await page.evaluate(
+                """() => {
+                    const normalize = (value) => (value || '').replace(/\\s+/g, '');
+                    const isVisible = (element) => {
+                        if (!element) return false;
+                        const style = window.getComputedStyle(element);
+                        if (!style || style.visibility === 'hidden' || style.display === 'none') {
+                            return false;
+                        }
+                        const rect = element.getBoundingClientRect();
+                        return rect.width > 0 && rect.height > 0;
+                    };
+                    const findClickable = (element) => {
+                        let current = element;
+                        while (current) {
+                            if (
+                                current instanceof HTMLElement &&
+                                (
+                                    current.tagName === 'BUTTON' ||
+                                    current.getAttribute('role') === 'button' ||
+                                    typeof current.onclick === 'function'
+                                )
+                            ) {
+                                return current;
+                            }
+                            current = current.parentElement;
+                        }
+                        return element instanceof HTMLElement ? element : null;
+                    };
+
+                    const label = [...document.querySelectorAll('body *')]
+                        .find((element) => isVisible(element) && normalize(element.textContent) === '横封面4:3');
+                    if (!label) {
+                        return { clicked: false, reason: '未找到“横封面4:3”标签' };
+                    }
+
+                    const labelRect = label.getBoundingClientRect();
+                    const candidates = [...document.querySelectorAll('body *')]
+                        .filter((element) => isVisible(element) && normalize(element.textContent) === '选择封面')
+                        .map(findClickable)
+                        .filter((element, index, array) => element && array.indexOf(element) === index && isVisible(element));
+
+                    if (!candidates.length) {
+                        return { clicked: false, reason: '未找到任何“选择封面”按钮' };
+                    }
+
+                    let bestCandidate = null;
+                    let bestScore = Number.POSITIVE_INFINITY;
+
+                    for (const candidate of candidates) {
+                        const rect = candidate.getBoundingClientRect();
+                        const verticalGap = labelRect.top - rect.bottom;
+                        const centerDelta = Math.abs(
+                            ((rect.left + rect.right) / 2) - ((labelRect.left + labelRect.right) / 2)
+                        );
+                        const overlap = Math.max(
+                            0,
+                            Math.min(rect.right, labelRect.right) - Math.max(rect.left, labelRect.left)
+                        );
+                        const abovePenalty = verticalGap >= -10 ? 0 : 5000;
+                        const score = abovePenalty + Math.abs(verticalGap - 30) + centerDelta - overlap;
+
+                        if (score < bestScore) {
+                            bestScore = score;
+                            bestCandidate = candidate;
+                        }
+                    }
+
+                    if (!bestCandidate) {
+                        return { clicked: false, reason: '无法定位“横封面4:3”对应的“选择封面”按钮' };
+                    }
+
+                    bestCandidate.click();
+                    return { clicked: true, reason: '' };
+                }"""
+            )
+            if result.get("clicked"):
+                break
+
+            last_reason = result.get("reason", "未找到“选择封面”按钮")
+            await asyncio.sleep(0.5)
+        else:
+            raise RuntimeError(last_reason)
+
+        await page.wait_for_selector("div.dy-creator-content-modal", timeout=30000)
 
     async def _refresh_before_cover_setup(self, page: Page) -> None:
         print("   设置封面前刷新页面，等待封面按钮状态稳定...")
@@ -523,26 +577,147 @@ class DouyinUploader:
         except Exception:
             return False
 
+    async def _locator_is_clickable(self, locator) -> bool:
+        try:
+            if await locator.count() == 0:
+                return False
+            if not await locator.first.is_visible():
+                return False
+            try:
+                return await locator.first.evaluate(
+                    """node => {
+                        const disabled = typeof node.matches === 'function' && node.matches(':disabled');
+                        const attrDisabled = node.getAttribute('disabled') !== null;
+                        const ariaDisabled = node.getAttribute('aria-disabled') === 'true';
+                        const className = typeof node.className === 'string' ? node.className : '';
+                        const hasDisabledClass = /(^|\\s)(disabled|disable)(\\s|$)/i.test(className);
+                        return !(disabled || attrDisabled || ariaDisabled || hasDisabledClass);
+                    }"""
+                )
+            except Exception:
+                return await locator.first.is_enabled()
+        except Exception:
+            return False
+
+    async def _wait_for_first_clickable(
+        self,
+        locators,
+        *,
+        timeout_ms: int,
+        description: str,
+        log_prefix: str | None = None,
+    ):
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+        last_state = "not_found"
+        last_log_state: str | None = None
+
+        while asyncio.get_running_loop().time() < deadline:
+            for locator in locators:
+                try:
+                    if await locator.count() == 0:
+                        continue
+                    if not await self._locator_is_visible(locator):
+                        last_state = "hidden"
+                        continue
+                    if await self._locator_is_clickable(locator):
+                        return locator.first
+                    last_state = "disabled"
+                except Exception:
+                    last_state = "error"
+                    continue
+
+            if log_prefix and last_state != last_log_state:
+                print(f"   {log_prefix}，继续等待...")
+                last_log_state = last_state
+            await asyncio.sleep(0.5)
+
+        raise TimeoutError(f"等待{description}可点击超时，当前状态: {last_state}")
+
+    def _cover_dialog_confirm_candidates(self, page: Page):
+        return [
+            page.get_by_role("button", name="完成"),
+            page.locator("div#tooltip-container button:visible:has-text('完成')"),
+            page.get_by_role("button", name="确定"),
+            page.locator("div#tooltip-container button:visible:has-text('确定')"),
+        ]
+
+    def _cover_dialog_action_candidates(self, page: Page, button_text: str):
+        modal = page.locator("div.dy-creator-content-modal")
+        return [
+            modal.get_by_role("button", name=button_text),
+            modal.locator(f"button:visible:has-text('{button_text}')"),
+            page.locator(f"div#tooltip-container button:visible:has-text('{button_text}')"),
+        ]
+
+    async def _wait_for_cover_dialog_confirm_button(self, page: Page, timeout_ms: int = 90000):
+        return await self._wait_for_first_clickable(
+            self._cover_dialog_confirm_candidates(page),
+            timeout_ms=timeout_ms,
+            description="封面确认按钮",
+            log_prefix="封面弹窗中的“完成/确定”按钮还不可点击",
+        )
+
+    async def _wait_for_cover_dialog_action_button(
+        self,
+        page: Page,
+        button_text: str,
+        timeout_ms: int = 90000,
+    ):
+        return await self._wait_for_first_clickable(
+            self._cover_dialog_action_candidates(page, button_text),
+            timeout_ms=timeout_ms,
+            description=f"{button_text}按钮",
+            log_prefix=f"封面弹窗中的“{button_text}”按钮还不可点击",
+        )
+
+    async def _wait_for_cover_selection_settled(self, page: Page, timeout_ms: int = 15000) -> None:
+        modal = page.locator("div.dy-creator-content-modal")
+        footer = page.locator("div.extractFooter")
+        cover_button = page.get_by_text("选择封面").first
+        deadline = asyncio.get_running_loop().time() + (timeout_ms / 1000)
+
+        while asyncio.get_running_loop().time() < deadline:
+            modal_visible = await self._locator_is_visible(modal)
+            footer_visible = await self._locator_is_visible(footer)
+            cover_button_visible = await self._locator_is_visible(cover_button)
+
+            if not modal_visible and not footer_visible and cover_button_visible:
+                await asyncio.sleep(1.5)
+                print("   封面选择状态已稳定")
+                return
+
+            await asyncio.sleep(0.5)
+
+        raise TimeoutError("封面弹窗关闭后，页面迟迟未恢复到稳定状态")
+
+    async def _confirm_cover_selection(self, page: Page, success_message: str) -> None:
+        confirm_button = await self._wait_for_cover_dialog_confirm_button(page)
+        button_text = (await confirm_button.inner_text()).strip() or "确认"
+        await confirm_button.click(force=True)
+        print(f"   {success_message}，点击“{button_text}”")
+        await self._wait_for_cover_dialog_closed(page)
+        await self._wait_for_cover_selection_settled(page)
+        self.cover_ready = True
+
+    async def _apply_custom_cover_without_refresh(self, page: Page) -> None:
+        self.cover_ready = False
+        await self._click_cover_mode_with_retry(
+            page,
+            button_text="设置横封面",
+            wait_timeout_ms=20000,
+            refresh_retries=0,
+        )
+        await page.locator(
+            "div[class^='semi-upload upload'] >> input.semi-upload-hidden-input"
+        ).set_input_files(str(self.cover_path))
+        await asyncio.sleep(3)
+        await self._confirm_cover_selection(page, "封面设置已提交")
+
     async def _click_cover_dialog_confirm(self, page: Page) -> bool:
-        done_button = page.get_by_role("button", name="完成")
-        if await self._locator_is_visible(done_button):
-            await done_button.first.click(force=True)
-            return True
-
-        legacy_done = page.locator("div#tooltip-container button:visible:has-text('完成')")
-        if await self._locator_is_visible(legacy_done):
-            await legacy_done.first.click(force=True)
-            return True
-
-        confirm_button = page.get_by_role("button", name="确定")
-        if await self._locator_is_visible(confirm_button):
-            await confirm_button.first.click(force=True)
-            return True
-
-        legacy_confirm = page.locator("div#tooltip-container button:visible:has-text('确定')")
-        if await self._locator_is_visible(legacy_confirm):
-            await legacy_confirm.first.click(force=True)
-            return True
+        for locator in self._cover_dialog_confirm_candidates(page):
+            if await self._locator_is_clickable(locator):
+                await locator.first.click(force=True)
+                return True
 
         return False
 
@@ -583,6 +758,41 @@ class DouyinUploader:
             await asyncio.sleep(0.5)
 
         raise TimeoutError("等待推荐封面项超时")
+
+    async def _apply_recommended_cover_without_refresh(self, page: Page) -> None:
+        self.cover_ready = False
+        await self._open_cover_dialog(page)
+        set_vertical_button = await self._wait_for_cover_dialog_action_button(
+            page,
+            "设置竖封面",
+            timeout_ms=90000,
+        )
+        await set_vertical_button.click(force=True)
+        print("   “设置竖封面”按钮已可点击，开始进入封面确认阶段")
+        await asyncio.sleep(1)
+        await self._confirm_cover_selection(page, "推荐封面设置已提交")
+
+    async def _apply_cover_without_refresh(self, page: Page) -> None:
+        if self.cover_path:
+            try:
+                await self._apply_custom_cover_without_refresh(page)
+                return
+            except Exception as custom_error:
+                print(f"   当前页面应用指定封面失败，将回退到推荐封面: {custom_error}")
+                await self._dismiss_cover_dialog(page)
+
+        await self._apply_recommended_cover_without_refresh(page)
+
+    async def _is_cover_warning_visible(self, page: Page) -> bool:
+        warnings = [
+            page.get_by_text("请设置封面后再发布").first,
+            page.get_by_text("请选择封面后再发布").first,
+        ]
+
+        for warning in warnings:
+            if await self._locator_is_visible(warning):
+                return True
+        return False
 
     async def _dismiss_cover_dialog(self, page: Page) -> bool:
         candidates = [
@@ -639,55 +849,33 @@ class DouyinUploader:
         for attempt in range(3):
             try:
                 await self._refresh_before_cover_setup(page)
-                try:
-                    await self._click_cover_mode_with_retry(page, button_text="设置横封面")
-                except Exception as horizontal_error:
-                    print(f"   设置横封面失败，尝试设置竖封面: {horizontal_error}")
-                    await self._click_cover_mode_with_retry(
-                        page,
-                        button_text="设置竖封面",
-                        wait_timeout_ms=8000,
-                        refresh_retries=1,
-                    )
-
-                recommend_item = await self._wait_for_recommended_cover_item(page, timeout_ms=12000)
-                await recommend_item.click(force=True)
-                await asyncio.sleep(1)
-
-                confirmed = False
-                done_btn = page.get_by_role("button", name="完成")
-                if await done_btn.count() > 0:
-                    await done_btn.first.click(force=True)
-                    print("   已自动选择推荐封面并点击“完成”")
-                    await asyncio.sleep(2)
-                    confirmed = True
-                else:
-                    confirm_btn = page.get_by_role("button", name="确定")
-                    if await confirm_btn.count() > 0:
-                        await confirm_btn.first.click(force=True)
-                        print("   已自动选择推荐封面并点击“确定”")
-                        await asyncio.sleep(2)
-                        confirmed = True
-
-                if not confirmed:
-                    raise RuntimeError("推荐封面已选中，但未找到可点击的确认按钮")
-
-                await self._wait_for_cover_dialog_closed(page)
+                await self._apply_recommended_cover_without_refresh(page)
                 return
             except Exception as e:
                 last_error = e
                 print(f"   主动设置封面失败，准备重试: {e}")
                 await self._dismiss_cover_dialog(page)
 
-        print(f"   主动设置封面失败，跳过封面预设置，后续由发布阶段兜底: {last_error}")
+        raise RuntimeError(f"主动设置封面失败，已阻止继续发布: {last_error}")
+
+    async def _ensure_cover_ready_before_publish(self, page: Page) -> None:
+        if self.cover_ready:
+            return
+
+        print("   发布前尚未确认封面设置完成，重新执行封面选择...")
+        await self._apply_cover_without_refresh(page)
+        if not self.cover_ready:
+            raise RuntimeError("封面未确认完成，已阻止点击发布")
 
     async def _publish(self, page: Page):
         """点击发布按钮"""
         max_attempts = 30
+        await self._ensure_cover_ready_before_publish(page)
+
         for _ in range(max_attempts):
             try:
                 publish_button = page.get_by_role('button', name="发布", exact=True)
-                if await publish_button.count() > 0:
+                if await self._locator_is_clickable(publish_button):
                     await publish_button.click()
                 
                 # 等待跳转到管理页面（表示发布成功）
@@ -696,34 +884,26 @@ class DouyinUploader:
                     timeout=5000
                 )
                 return
-            except:
+            except Exception:
                 # 处理封面提示
-                await self._handle_cover_prompt(page)
+                handled = await self._handle_cover_prompt(page)
+                if not handled:
+                    await self._ensure_cover_ready_before_publish(page)
                 await asyncio.sleep(1)
         
         raise TimeoutError("发布超时")
     
     async def _handle_cover_prompt(self, page: Page):
         """处理封面设置提示"""
-        try:
-            if page.is_closed():
-                return
-            
-            cover_warning = page.get_by_text("请设置封面后再发布").first
-            if await cover_warning.count() > 0 and await cover_warning.is_visible():
-                print("   检测到需要设置封面，正在选择推荐封面...")
-                recommend_cover = page.locator('[class^="recommendCover-"]').first
-                if await recommend_cover.count() > 0:
-                    await recommend_cover.click()
-                    await asyncio.sleep(1)
-                    
-                    # 处理确认弹窗
-                    confirm_btn = page.get_by_role("button", name="确定")
-                    if await confirm_btn.count() > 0 and await confirm_btn.is_visible():
-                        await confirm_btn.click()
-                        await asyncio.sleep(1)
-        except Exception as e:
-            print(f"   处理封面提示时发生非致命错误: {e}")
+        if page.is_closed():
+            return False
+
+        if not await self._is_cover_warning_visible(page):
+            return False
+
+        print("   检测到页面仍要求先设置封面，重新执行封面选择...")
+        await self._apply_cover_without_refresh(page)
+        return True
 
 
 def parse_args():

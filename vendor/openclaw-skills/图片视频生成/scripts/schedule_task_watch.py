@@ -431,6 +431,96 @@ def _load_easyclaw_config() -> dict | None:
     }
 
 
+def _fetch_easyclaw_events(*, server_url: str, device_id: str, device_token: str, limit: int = 100) -> list[dict]:
+    url = urllib.parse.urljoin(server_url.rstrip("/") + "/", "api/v1/openclaw/bridge/inbound")
+    query = urllib.parse.urlencode(
+        {
+            "device_id": device_id,
+            "device_token": device_token,
+            "limit": str(limit),
+        }
+    )
+    request = urllib.request.Request(f"{url}?{query}", method="GET")
+    try:
+        with urllib.request.urlopen(request) as response:
+            payload = _parse_json_response(response)
+    except (urllib.error.HTTPError, urllib.error.URLError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    events = payload.get("events")
+    if not isinstance(events, list):
+        return []
+    return [item for item in events if isinstance(item, dict)]
+
+
+def _normalize_positive_int_string(value: object) -> str:
+    text = str(value or "").strip()
+    if text.isdigit() and int(text) >= 1:
+        return text
+    return ""
+
+
+def _resolve_easyclaw_event_id(
+    *,
+    server_url: str,
+    device_id: str,
+    device_token: str,
+    event_id: str,
+    inbound_message_id: str,
+    sender_id: str,
+    bot_id: str,
+) -> str:
+    resolved_event_id = _normalize_positive_int_string(event_id)
+    if resolved_event_id:
+        return resolved_event_id
+
+    events = _fetch_easyclaw_events(
+        server_url=server_url,
+        device_id=device_id,
+        device_token=device_token,
+    )
+    normalized_message_id = _normalize_positive_int_string(inbound_message_id)
+    numeric_sender_id = _normalize_positive_int_string(sender_id)
+    numeric_bot_id = _normalize_positive_int_string(bot_id)
+    if not normalized_message_id and not numeric_sender_id and not numeric_bot_id:
+        return ""
+    exact_matches: list[dict] = []
+    contextual_matches: list[dict] = []
+
+    for event in events:
+        current_event_id = event.get("event_id")
+        if current_event_id in (None, ""):
+            continue
+        event_sender_id = str(event.get("user_id") or "").strip()
+        event_bot_id = str(event.get("bot_id") or "").strip()
+        event_message_id = str(event.get("inbound_message_id") or "").strip()
+        event_chat_type = str(event.get("chat_type") or "").strip().lower()
+
+        if numeric_sender_id and event_sender_id != numeric_sender_id:
+            continue
+        if numeric_bot_id and event_bot_id and event_bot_id != numeric_bot_id:
+            continue
+        if event_chat_type and event_chat_type != "direct":
+            continue
+
+        if normalized_message_id and event_message_id == normalized_message_id:
+            exact_matches.append(event)
+            continue
+        if not normalized_message_id:
+            contextual_matches.append(event)
+    if exact_matches:
+        latest = max(exact_matches, key=lambda item: int(item.get("event_id") or 0))
+        return str(latest.get("event_id") or "").strip()
+    if contextual_matches:
+        latest = max(contextual_matches, key=lambda item: int(item.get("event_id") or 0))
+        return str(latest.get("event_id") or "").strip()
+    if not exact_matches:
+        return ""
+    latest = max(exact_matches, key=lambda item: int(item.get("event_id") or 0))
+    return str(latest.get("event_id") or "").strip()
+
+
 def _fetch_clawx_im_events(*, server_url: str, device_id: str, device_token: str, limit: int = 50) -> list[dict]:
     url = urllib.parse.urljoin(server_url.rstrip("/") + "/", "api/v1/openclaw/bridge/inbound")
     query = urllib.parse.urlencode(
@@ -456,11 +546,51 @@ def _fetch_clawx_im_events(*, server_url: str, device_id: str, device_token: str
     return [item for item in events if isinstance(item, dict)]
 
 
-def _resolve_clawx_im_reply_target() -> dict[str, str] | None:
-    latest = _latest_non_cron_session_entry()
-    if latest is None or latest.get("channel") != "clawx-im":
+def _resolve_notification_session_context(
+    *,
+    latest_session: dict[str, str] | None,
+    session_notification: dict[str, str] | None,
+) -> dict[str, str] | None:
+    if session_notification is not None:
+        session_file = str(session_notification.get("session_file") or "").strip()
+        delivery_channel = str(session_notification.get("delivery_channel") or "").strip()
+        if session_file and delivery_channel:
+            return {
+                "session_key": str(session_notification.get("session_key") or "").strip(),
+                "session_file": session_file,
+                "channel": delivery_channel,
+                "to": str(session_notification.get("delivery_to") or "").strip(),
+                "account_id": str(session_notification.get("account_id") or "").strip(),
+                "origin_from": str(session_notification.get("origin_from") or "").strip(),
+                "origin_to": str(session_notification.get("origin_to") or "").strip(),
+            }
+    if latest_session is None:
         return None
-    conversation_info = _extract_latest_conversation_info(latest.get("session_file") or "")
+    if not latest_session.get("session_file") or not latest_session.get("channel"):
+        return None
+    return {
+        "session_key": str(latest_session.get("session_key") or "").strip(),
+        "session_file": str(latest_session.get("session_file") or "").strip(),
+        "channel": str(latest_session.get("channel") or "").strip(),
+        "to": str(latest_session.get("to") or "").strip(),
+        "account_id": str(latest_session.get("account_id") or "").strip(),
+        "origin_from": str(latest_session.get("origin_from") or "").strip(),
+        "origin_to": str(latest_session.get("origin_to") or "").strip(),
+    }
+
+
+def _resolve_clawx_im_reply_target(
+    *,
+    latest_session: dict[str, str] | None,
+    session_notification: dict[str, str] | None,
+) -> dict[str, str] | None:
+    selected_session = _resolve_notification_session_context(
+        latest_session=latest_session,
+        session_notification=session_notification,
+    )
+    if selected_session is None or selected_session.get("channel") != "clawx-im":
+        return None
+    conversation_info = _extract_latest_conversation_info(selected_session.get("session_file") or "")
     if not isinstance(conversation_info, dict):
         return None
     config = _load_clawx_im_config()
@@ -468,6 +598,7 @@ def _resolve_clawx_im_reply_target() -> dict[str, str] | None:
         return None
     message_id = str(conversation_info.get("message_id") or "").strip()
     sender_id = str(conversation_info.get("sender_id") or "").strip()
+    numeric_sender_id = sender_id if sender_id.isdigit() else ""
     is_group = bool(conversation_info.get("is_group_chat"))
     if not message_id or not sender_id:
         return None
@@ -484,7 +615,7 @@ def _resolve_clawx_im_reply_target() -> dict[str, str] | None:
         event_chat_type = str(event.get("chat_type") or "").strip().lower()
         if inbound_message_id != message_id:
             continue
-        if event_sender_id != sender_id:
+        if numeric_sender_id and event_sender_id != numeric_sender_id:
             continue
         if event_chat_type and event_chat_type != expected_chat_type:
             continue
@@ -524,29 +655,27 @@ def _strip_easyclaw_bot_label(value: object) -> str:
     return text
 
 
+def _is_easyclaw_target(value: object) -> bool:
+    return str(value or "").strip().startswith("easyclaw:")
+
+
 def _resolve_easyclaw_reply_target(
     *,
     latest_session: dict[str, str] | None,
     session_notification: dict[str, str] | None,
 ) -> dict[str, str] | None:
-    session_file = ""
-    expected_to = ""
-    origin_from = ""
-    origin_to = ""
-    if session_notification is not None:
-        session_file = str(session_notification.get("session_file") or "").strip()
-        expected_to = str(session_notification.get("delivery_to") or "").strip()
-        origin_from = str(session_notification.get("origin_from") or "").strip()
-        origin_to = str(session_notification.get("origin_to") or "").strip()
-    if not session_file and latest_session is not None:
-        session_file = str(latest_session.get("session_file") or "").strip()
-        expected_to = str(latest_session.get("to") or "").strip()
-        origin_from = str(latest_session.get("origin_from") or "").strip()
-        origin_to = str(latest_session.get("origin_to") or "").strip()
-    if latest_session is None and not session_file:
+    selected_session = _resolve_notification_session_context(
+        latest_session=latest_session,
+        session_notification=session_notification,
+    )
+    if selected_session is None:
         return None
-    if latest_session is not None and latest_session.get("channel") != "easyclaw":
+    if selected_session.get("channel") != "easyclaw":
         return None
+    session_file = str(selected_session.get("session_file") or "").strip()
+    expected_to = str(selected_session.get("to") or "").strip()
+    origin_from = str(selected_session.get("origin_from") or "").strip()
+    origin_to = str(selected_session.get("origin_to") or "").strip()
     config = _load_easyclaw_config()
     if config is None:
         return None
@@ -554,47 +683,59 @@ def _resolve_easyclaw_reply_target(
     event_id = ""
     inbound_message_id = ""
     group_channel = ""
-    sender_id = _strip_easyclaw_sender_label(origin_from)
-    bot_id = _strip_easyclaw_bot_label(origin_to or expected_to or config.get("bot_id") or "")
+    sender_id = _normalize_positive_int_string(_strip_easyclaw_sender_label(origin_from))
+    bot_id = _normalize_positive_int_string(_strip_easyclaw_bot_label(origin_to or expected_to or config.get("bot_id") or ""))
     if isinstance(conversation_info, dict):
-        event_id = str(
+        event_id = _normalize_positive_int_string(
             conversation_info.get("event_id")
             or conversation_info.get("topic_id")
             or ""
-        ).strip()
-        inbound_message_id = _strip_easyclaw_message_label(
+        )
+        inbound_message_id = _normalize_positive_int_string(_strip_easyclaw_message_label(
             conversation_info.get("message_id")
             or conversation_info.get("thread_label")
             or ""
-        )
+        ))
         group_channel = str(conversation_info.get("group_channel") or "").strip()
-        sender_id = _strip_easyclaw_sender_label(
+        conversation_sender_id = _normalize_positive_int_string(_strip_easyclaw_sender_label(
             conversation_info.get("sender_id")
             or conversation_info.get("from")
             or origin_from
-        ) or sender_id
-        bot_id = _strip_easyclaw_bot_label(
+        ))
+        if conversation_sender_id:
+            sender_id = conversation_sender_id
+        conversation_bot_id = _normalize_positive_int_string(_strip_easyclaw_bot_label(
             conversation_info.get("bot_id")
             or conversation_info.get("to")
             or origin_to
             or expected_to
             or config.get("bot_id")
             or ""
-        ) or bot_id
+        ))
+        if conversation_bot_id:
+            bot_id = conversation_bot_id
     if group_channel and expected_to and group_channel != expected_to:
         return None
-    if not event_id and not sender_id:
+    if not event_id and not inbound_message_id and not (sender_id and bot_id):
         return None
-    if not event_id:
-        if not bot_id:
-            bot_id = str(config.get("bot_id") or "").strip()
-    if config.get("bot_id") and expected_to:
-        expected_bot_target = f"easyclaw:bot:{config['bot_id']}"
-        if expected_to != expected_bot_target:
-            return None
+    if not bot_id:
+        bot_id = _normalize_positive_int_string(config.get("bot_id") or "")
+    if expected_to and not _is_easyclaw_target(expected_to):
+        return None
+    if origin_to and not _is_easyclaw_target(origin_to):
+        return None
+    resolved_event_id = _resolve_easyclaw_event_id(
+        server_url=config["server_url"],
+        device_id=config["device_id"],
+        device_token=config["device_token"],
+        event_id=event_id,
+        inbound_message_id=inbound_message_id,
+        sender_id=sender_id,
+        bot_id=bot_id,
+    )
     return {
         "mode": "easyclaw-reply",
-        "event_id": event_id,
+        "event_id": resolved_event_id,
         "inbound_message_id": inbound_message_id,
         "sender_id": sender_id,
         "bot_id": bot_id,
@@ -683,7 +824,9 @@ def _resolve_session_append_target(*, notify_session_key: str = "", notify_sessi
                     "session_file": session_file,
                     "session_store_path": str(store_path),
                     "updated_at": int(item.get("updatedAt") or 0),
+                    "delivery_channel": str(((item.get("deliveryContext") or {}) if isinstance(item.get("deliveryContext"), dict) else {}).get("channel") or "").strip(),
                     "delivery_to": str(((item.get("deliveryContext") or {}) if isinstance(item.get("deliveryContext"), dict) else {}).get("to") or "").strip(),
+                    "account_id": str(((item.get("deliveryContext") or {}) if isinstance(item.get("deliveryContext"), dict) else {}).get("accountId") or "").strip(),
                     "origin_from": str(((item.get("origin") or {}) if isinstance(item.get("origin"), dict) else {}).get("from") or "").strip(),
                     "origin_to": str(((item.get("origin") or {}) if isinstance(item.get("origin"), dict) else {}).get("to") or "").strip(),
                 }
@@ -699,7 +842,9 @@ def _resolve_session_append_target(*, notify_session_key: str = "", notify_sessi
         "session_id": str(selected["session_id"]),
         "session_file": str(selected["session_file"]),
         "session_store_path": str(selected["session_store_path"]),
+        "delivery_channel": str(selected.get("delivery_channel") or ""),
         "delivery_to": str(selected.get("delivery_to") or ""),
+        "account_id": str(selected.get("account_id") or ""),
         "origin_from": str(selected.get("origin_from") or ""),
         "origin_to": str(selected.get("origin_to") or ""),
     }
@@ -712,6 +857,7 @@ def _shell_command(
     task_kind: str,
     label: str,
     watch_key: str,
+    job_name: str,
     job_id: str | None,
     notification: dict | None,
 ) -> str:
@@ -725,6 +871,8 @@ def _shell_command(
         "--watch-key",
         watch_key,
     ]
+    if job_name:
+        args.extend(["--job-name", job_name])
     if label:
         args.extend(["--label", label])
     if job_id:
@@ -764,6 +912,7 @@ def _build_prompt(
     task_kind: str,
     label: str,
     watch_key: str,
+    job_name: str,
     job_id: str | None,
     notification: dict | None,
 ) -> str:
@@ -773,6 +922,7 @@ def _build_prompt(
         task_kind=task_kind,
         label=label,
         watch_key=watch_key,
+        job_name=job_name,
         job_id=job_id,
         notification=notification,
     )
@@ -805,12 +955,22 @@ def build_watch_job_plan(
         notify_session_key=notify_session_key,
         notify_session_id=notify_session_id,
     )
-    clawx_notification = _resolve_clawx_im_reply_target() if latest_session is not None and latest_session.get("channel") == "clawx-im" else None
-    easyclaw_notification = _resolve_easyclaw_reply_target(
+    selected_session = _resolve_notification_session_context(
         latest_session=latest_session,
         session_notification=session_notification,
     )
-    channel_notification = clawx_notification or easyclaw_notification
+    selected_channel = str((selected_session or {}).get("channel") or "").strip()
+    channel_notification = None
+    if selected_channel == "clawx-im":
+        channel_notification = _resolve_clawx_im_reply_target(
+            latest_session=latest_session,
+            session_notification=session_notification,
+        )
+    elif selected_channel == "easyclaw":
+        channel_notification = _resolve_easyclaw_reply_target(
+            latest_session=latest_session,
+            session_notification=session_notification,
+        )
     notification = {
         "session": session_notification,
         "channel": channel_notification,
@@ -819,9 +979,9 @@ def build_watch_job_plan(
         raise WatchSchedulingError(f"Unable to resolve session notification target: {notify_session_key.strip()}")
     if notify_session_id.strip() and session_notification is None:
         raise WatchSchedulingError(f"Unable to resolve session notification target: {notify_session_id.strip()}")
-    if latest_session is not None and latest_session.get("channel") == "clawx-im" and channel_notification is None:
+    if selected_channel == "clawx-im" and channel_notification is None and session_notification is None:
         raise WatchSchedulingError("Unable to resolve the current ClawX IM reply target for background notification.")
-    if latest_session is not None and latest_session.get("channel") == "easyclaw" and channel_notification is None:
+    if selected_channel == "easyclaw" and channel_notification is None and session_notification is None:
         raise WatchSchedulingError("Unable to resolve the current easyclaw reply target for background notification.")
 
     watch_key = uuid4().hex
@@ -832,6 +992,7 @@ def build_watch_job_plan(
         task_kind=task_kind,
         label=label,
         watch_key=watch_key,
+        job_name=job_name,
         job_id=None,
         notification=notification,
     )
@@ -970,6 +1131,7 @@ def schedule_task_watch(
             task_kind=task_kind,
             label=label,
             watch_key=watch_key,
+            job_name=job_name,
             job_id=job_id,
             notification=plan.get("notification"),
         )
@@ -993,9 +1155,10 @@ def schedule_task_watch(
         "label": label,
         "watch_key": watch_key,
         "job_id": job_id,
+        "job_name": job_name,
         "schedule": every,
-        "delivery": "none" if plan.get("notification") is not None else "announce",
-        "delivery_channel": "" if plan.get("notification") is not None else "last",
+        "delivery": "none" if plan.get("notification_mode") != "announce" else "announce",
+        "delivery_channel": "" if plan.get("notification_mode") != "announce" else "last",
         "notification_mode": plan.get("notification_mode") or "announce",
         "light_context": True,
         "creation_mode": creation_mode,
@@ -1003,11 +1166,21 @@ def schedule_task_watch(
     }
 
 
-def remove_task_watch(job_id: str | None) -> bool:
-    if not job_id:
+def remove_task_watch(job_id: str | None, job_name: str | None = None) -> bool:
+    resolved_job_id = str(job_id or "").strip()
+    if not resolved_job_id and job_name:
+        resolved_job_id = str(_find_job_id_by_name(str(job_name).strip()) or "").strip()
+    if not resolved_job_id:
         return False
-    result = _run_openclaw(["cron", "remove", str(job_id)])
-    return result.returncode == 0
+    result = _run_openclaw(["cron", "remove", resolved_job_id])
+    if result.returncode == 0:
+        return True
+    if job_name and str(job_id or "").strip():
+        fallback_job_id = str(_find_job_id_by_name(str(job_name).strip()) or "").strip()
+        if fallback_job_id and fallback_job_id != resolved_job_id:
+            fallback_result = _run_openclaw(["cron", "remove", fallback_job_id])
+            return fallback_result.returncode == 0
+    return False
 
 
 def main() -> None:
