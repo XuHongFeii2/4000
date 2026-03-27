@@ -29,6 +29,7 @@ const BUILTIN_SKILLS_SOURCES = [
 ];
 const SKILL_MANIFEST_NAMES = ['SKILL.md', 'skill.md'];
 const VENDOR_SKILLS_MANIFEST = '_clawx_vendor_skills.json';
+const VENDOR_SKILL_MARKER = '.clawx_vendor_skill';
 const DEFAULT_SKILL_EXCLUDE_SET = new Set([
   'openai-image-gen',
   'openai-whisper',
@@ -140,6 +141,7 @@ function copyBuiltinSkills(outputDir) {
     });
 
     normalizeSkillManifestCase(outputSkillDir);
+    fs.writeFileSync(path.join(outputSkillDir, VENDOR_SKILL_MARKER), '1\n', 'utf8');
     copiedCount++;
     copiedSlugs.push(entry.name);
   }

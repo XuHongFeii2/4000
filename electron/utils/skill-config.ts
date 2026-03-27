@@ -15,6 +15,7 @@ import { logger } from './logger';
 
 const OPENCLAW_CONFIG_PATH = join(homedir(), '.openclaw', 'openclaw.json');
 const VENDOR_SKILLS_MANIFEST = '_clawx_vendor_skills.json';
+const VENDOR_SKILL_MARKER = '.clawx_vendor_skill';
 
 interface SkillEntry {
     enabled?: boolean;
@@ -148,6 +149,24 @@ async function moveDirWithFallback(sourceDir: string, targetDir: string): Promis
     }
 }
 
+function hasSkillManifest(dirPath: string): boolean {
+    return existsSync(join(dirPath, 'SKILL.md')) || existsSync(join(dirPath, 'skill.md'));
+}
+
+async function removeDirRobust(dirPath: string): Promise<boolean> {
+    try {
+        await rm(dirPath, {
+            recursive: true,
+            force: true,
+            maxRetries: 5,
+            retryDelay: 200,
+        });
+        return !existsSync(dirPath);
+    } catch {
+        return false;
+    }
+}
+
 async function loadVendorSkillSlugs(sourceRoot: string): Promise<Set<string>> {
     const manifestPath = join(sourceRoot, VENDOR_SKILLS_MANIFEST);
     if (!existsSync(manifestPath)) {
@@ -170,11 +189,33 @@ async function loadVendorSkillSlugs(sourceRoot: string): Promise<Set<string>> {
     }
 }
 
+async function loadVendorSkillSlugsFromMarker(sourceRoot: string): Promise<Set<string>> {
+    const result = new Set<string>();
+    if (!existsSync(sourceRoot)) {
+        return result;
+    }
+    try {
+        const dirents = await readdir(sourceRoot, { withFileTypes: true });
+        for (const entry of dirents) {
+            if (!entry.isDirectory()) continue;
+            const markerPath = join(sourceRoot, entry.name, VENDOR_SKILL_MARKER);
+            if (existsSync(markerPath)) {
+                result.add(entry.name);
+            }
+        }
+    } catch (error) {
+        logger.warn(`Failed to scan vendor skill markers from ${sourceRoot}:`, error);
+    }
+    return result;
+}
+
 async function migrateSkillsFromDir(sourceRoot: string, targetRoot: string, allowedSlugs: Set<string>): Promise<number> {
     if (!existsSync(sourceRoot)) {
+        logger.info(`[skills][migrate] source not found: ${sourceRoot}`);
         return 0;
     }
     if (allowedSlugs.size === 0) {
+        logger.info(`[skills][migrate] no vendor skills detected, skip migration from: ${sourceRoot}`);
         return 0;
     }
 
@@ -194,15 +235,14 @@ async function migrateSkillsFromDir(sourceRoot: string, targetRoot: string, allo
                 continue; // keep non-vendor skills in source directory
             }
             const sourceDir = join(sourceRoot, slug);
-            const sourceManifest = join(sourceDir, 'SKILL.md');
-            if (!existsSync(sourceManifest)) {
+            if (!hasSkillManifest(sourceDir)) {
                 continue;
             }
 
             const targetDir = join(targetRoot, slug);
-            const targetManifest = join(targetDir, 'SKILL.md');
-            if (existsSync(targetManifest)) {
-                await rm(sourceDir, { recursive: true, force: true });
+            if (hasSkillManifest(targetDir)) {
+                const removed = await removeDirRobust(sourceDir);
+                logger.info(`[skills][migrate] duplicate source cleanup: slug=${slug}, removed=${removed}`);
                 continue;
             }
 
@@ -215,6 +255,22 @@ async function migrateSkillsFromDir(sourceRoot: string, targetRoot: string, allo
             }
         }
 
+        // Safety cleanup: if target already has this vendor skill, ensure source copy is removed.
+        for (const slug of allowedSlugs) {
+            const sourceDir = join(sourceRoot, slug);
+            if (!existsSync(sourceDir)) continue;
+
+            const targetDir = join(targetRoot, slug);
+            if (!hasSkillManifest(targetDir)) continue;
+
+            try {
+                const removed = await removeDirRobust(sourceDir);
+                logger.info(`[skills][migrate] post-cleanup: slug=${slug}, removed=${removed}`);
+            } catch (error) {
+                logger.warn(`Failed to remove duplicated bundled source skill ${slug}:`, error);
+            }
+        }
+
     } catch (error) {
         logger.warn(`Failed to migrate bundled skills from ${sourceRoot}:`, error);
     }
@@ -224,8 +280,10 @@ async function migrateSkillsFromDir(sourceRoot: string, targetRoot: string, allo
 
 /**
  * Ensure bundled skills are migrated to ~/.openclaw/skills/<slug>/.
- * Only skills listed by <openclaw>/skills/_clawx_vendor_skills.json
- * (generated during bundle from vendor/openclaw-skills) are migrated.
+ * Only vendor skills are migrated, resolved by:
+ * 1) <openclaw>/skills/_clawx_vendor_skills.json
+ * 2) per-skill marker file: <openclaw>/skills/<slug>/.clawx_vendor_skill
+ * (both generated during bundle from vendor/openclaw-skills).
  * Other source skills remain in place.
  */
 export async function ensureBuiltinSkillsInstalled(): Promise<void> {
@@ -234,10 +292,43 @@ export async function ensureBuiltinSkillsInstalled(): Promise<void> {
 
     const primarySource = join(openclawDir, 'skills');
     const vendorSkillSlugs = await loadVendorSkillSlugs(primarySource);
-
-    const installedFromPrimary = await migrateSkillsFromDir(primarySource, skillsRoot, vendorSkillSlugs);
+    const markerSkillSlugs = await loadVendorSkillSlugsFromMarker(primarySource);
+    const effectiveVendorSkillSlugs = new Set<string>([
+        ...Array.from(vendorSkillSlugs),
+        ...Array.from(markerSkillSlugs),
+    ]);
 
     logger.info(
-        `Bundled vendor skills migration finished: moved=${installedFromPrimary}, totalVendor=${vendorSkillSlugs.size}, target=${skillsRoot}`
+        `[skills][migrate] vendor slug sources manifest=${vendorSkillSlugs.size}, marker=${markerSkillSlugs.size}, effective=${effectiveVendorSkillSlugs.size}`,
+    );
+    logger.info(`[skills][migrate] has 图片视频生成=${effectiveVendorSkillSlugs.has('图片视频生成')}`);
+    logger.info(`[skills][migrate] vendor slugs=${Array.from(effectiveVendorSkillSlugs).sort().join(', ') || '(empty)'}`);
+    const debugSlug = '图片视频生成';
+    const debugSourceDir = join(primarySource, debugSlug);
+    const debugTargetDir = join(skillsRoot, debugSlug);
+    logger.info(
+        `[skills][migrate] debug slug=${debugSlug}, sourceExists=${existsSync(debugSourceDir)}, sourceHasManifest=${hasSkillManifest(debugSourceDir)}, targetExists=${existsSync(debugTargetDir)}, targetHasManifest=${hasSkillManifest(debugTargetDir)}`,
+    );
+    try {
+        console.log('[skills][migrate][debug]', {
+            sourceRoot: primarySource,
+            targetRoot: skillsRoot,
+            vendorSkillSlugs: Array.from(effectiveVendorSkillSlugs).sort(),
+            debugSlug,
+            sourceExists: existsSync(debugSourceDir),
+            sourceHasManifest: hasSkillManifest(debugSourceDir),
+            targetExists: existsSync(debugTargetDir),
+            targetHasManifest: hasSkillManifest(debugTargetDir),
+        });
+    } catch {}
+
+    const installedFromPrimary = await migrateSkillsFromDir(primarySource, skillsRoot, effectiveVendorSkillSlugs);
+
+    logger.info(
+        `[skills][migrate] debug-after slug=${debugSlug}, sourceExists=${existsSync(debugSourceDir)}, targetExists=${existsSync(debugTargetDir)}`,
+    );
+
+    logger.info(
+        `Bundled vendor skills migration finished: moved=${installedFromPrimary}, totalVendor=${effectiveVendorSkillSlugs.size}, target=${skillsRoot}`
     );
 }
