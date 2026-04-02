@@ -11,6 +11,7 @@ import {
   getProviderConfig,
   getProviderEnvVar,
 } from '@electron/utils/provider-registry';
+import { resolveProviderBaseUrl } from '@electron/utils/provider-url';
 
 describe('provider metadata', () => {
   it('includes ark in the frontend provider registry', () => {
@@ -38,6 +39,30 @@ describe('provider metadata', () => {
       api: 'openai-completions',
       apiKeyEnv: 'ARK_API_KEY',
     });
+  });
+
+  it('uses OpenAI-compatible Lobster API base URL and normalizes legacy values', () => {
+    expect(PROVIDER_TYPE_INFO).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'lobsterapi',
+          defaultBaseUrl: 'http://lobtalk.com:3000/v1',
+          requiresApiKey: true,
+          showBaseUrl: true,
+          showModelId: true,
+        }),
+      ])
+    );
+
+    expect(getProviderConfig('lobsterapi')).toEqual({
+      baseUrl: 'http://lobtalk.com:3000/v1',
+      api: 'openai-completions',
+      apiKeyEnv: 'LOBSTERAPI_API_KEY',
+    });
+
+    expect(resolveProviderBaseUrl('lobsterapi', 'http://lobtalk.com:3000')).toBe('http://lobtalk.com:3000/v1');
+    expect(resolveProviderBaseUrl('lobsterapi', 'http://lobtalk.com:3000/')).toBe('http://lobtalk.com:3000/v1');
+    expect(resolveProviderBaseUrl('lobsterapi', 'http://lobtalk.com:3000/v1')).toBe('http://lobtalk.com:3000/v1');
   });
 
   it('keeps builtin provider sources in sync', () => {

@@ -5,7 +5,10 @@
  * electron/utils/provider-registry.ts (env vars, models, configs).
  */
 
+import { providerIcons } from '@/assets/providers';
+
 export const PROVIDER_TYPES = [
+  'lobsterapi',
   'anthropic',
   'openai',
   'google',
@@ -46,61 +49,45 @@ export interface ProviderTypeInfo {
   name: string;
   icon: string;
   placeholder: string;
-  /** Model brand name for display (e.g. "Claude", "GPT") */
   model?: string;
   requiresApiKey: boolean;
-  /** Pre-filled base URL (for proxy/compatible providers like SiliconFlow) */
   defaultBaseUrl?: string;
-  /** Whether the user can edit the base URL in setup */
   showBaseUrl?: boolean;
-  /** Whether to show a Model ID input field (for providers where user picks the model) */
   showModelId?: boolean;
-  /** Whether the Model ID input should only be shown in developer mode */
   showModelIdInDevModeOnly?: boolean;
-  /** Default / example model ID placeholder */
   modelIdPlaceholder?: string;
-  /** Default model ID to pre-fill */
   defaultModelId?: string;
-  /** Whether this provider uses OAuth device flow instead of an API key */
   isOAuth?: boolean;
-  /** Whether this provider also accepts a direct API key (in addition to OAuth) */
   supportsApiKey?: boolean;
-  /** URL where users can apply for the API Key */
   apiKeyUrl?: string;
 }
 
-import { providerIcons } from '@/assets/providers';
-
-/** All supported provider types with UI metadata */
 export const PROVIDER_TYPE_INFO: ProviderTypeInfo[] = [
-  { id: 'anthropic', name: 'Anthropic', icon: '🤖', placeholder: 'sk-ant-api03-...', model: 'Claude', requiresApiKey: true, apiKeyUrl: 'https://console.anthropic.com/settings/keys' },
-  { id: 'openai', name: 'OpenAI', icon: '💚', placeholder: 'sk-proj-...', model: 'GPT', requiresApiKey: true, apiKeyUrl: 'https://platform.openai.com/api-keys' },
-  { id: 'google', name: 'Google', icon: '🔷', placeholder: 'AIza...', model: 'Gemini', requiresApiKey: true, apiKeyUrl: 'https://aistudio.google.com/apikey' },
-  { id: 'openrouter', name: 'OpenRouter', icon: '🌐', placeholder: 'sk-or-v1-...', model: 'Multi-Model', requiresApiKey: true, showModelId: true, showModelIdInDevModeOnly: true, modelIdPlaceholder: 'anthropic/claude-opus-4.6', defaultModelId: 'anthropic/claude-opus-4.6', apiKeyUrl: 'https://openrouter.ai/keys' },
+  { id: 'lobsterapi', name: '\u9f99\u867eAPI', icon: 'L', placeholder: 'sk-...', model: 'Custom Model', requiresApiKey: true, defaultBaseUrl: 'http://lobtalk.com:3000/v1', showBaseUrl: true, showModelId: true, modelIdPlaceholder: 'gpt-4o-mini' },
+  { id: 'anthropic', name: 'Anthropic', icon: 'A', placeholder: 'sk-ant-api03-...', model: 'Claude', requiresApiKey: true, apiKeyUrl: 'https://console.anthropic.com/settings/keys' },
+  { id: 'openai', name: 'OpenAI', icon: 'O', placeholder: 'sk-proj-...', model: 'GPT', requiresApiKey: true, apiKeyUrl: 'https://platform.openai.com/api-keys' },
+  { id: 'google', name: 'Google', icon: 'G', placeholder: 'AIza...', model: 'Gemini', requiresApiKey: true, apiKeyUrl: 'https://aistudio.google.com/apikey' },
+  { id: 'openrouter', name: 'OpenRouter', icon: 'R', placeholder: 'sk-or-v1-...', model: 'Multi-Model', requiresApiKey: true, showModelId: true, showModelIdInDevModeOnly: true, modelIdPlaceholder: 'anthropic/claude-opus-4.6', defaultModelId: 'anthropic/claude-opus-4.6', apiKeyUrl: 'https://openrouter.ai/keys' },
   { id: 'ark', name: 'ByteDance Ark', icon: 'A', placeholder: 'your-ark-api-key', model: 'Doubao', requiresApiKey: true, defaultBaseUrl: 'https://ark.cn-beijing.volces.com/api/v3', showBaseUrl: true, showModelId: true, modelIdPlaceholder: 'ep-20260228000000-xxxxx', apiKeyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey' },
-  { id: 'moonshot', name: 'Moonshot (CN)', icon: '🌙', placeholder: 'sk-...', model: 'Kimi', requiresApiKey: true, defaultBaseUrl: 'https://api.moonshot.cn/v1', defaultModelId: 'kimi-k2.5', apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys' },
-  { id: 'siliconflow', name: 'SiliconFlow (CN)', icon: '🌊', placeholder: 'sk-...', model: 'Multi-Model', requiresApiKey: true, defaultBaseUrl: 'https://api.siliconflow.cn/v1', showModelId: true, showModelIdInDevModeOnly: true, modelIdPlaceholder: 'deepseek-ai/DeepSeek-V3', defaultModelId: 'deepseek-ai/DeepSeek-V3', apiKeyUrl: 'https://cloud.siliconflow.cn/account/ak' },
-  { id: 'minimax-portal', name: 'MiniMax (Global)', icon: '☁️', placeholder: 'sk-...', model: 'MiniMax', requiresApiKey: false, isOAuth: true, supportsApiKey: true, defaultModelId: 'MiniMax-M2.5', apiKeyUrl: 'https://intl.minimaxi.com/' },
-  { id: 'minimax-portal-cn', name: 'MiniMax (CN)', icon: '☁️', placeholder: 'sk-...', model: 'MiniMax', requiresApiKey: false, isOAuth: true, supportsApiKey: true, defaultModelId: 'MiniMax-M2.5', apiKeyUrl: 'https://platform.minimaxi.com/' },
-  { id: 'qwen-portal', name: 'Qwen', icon: '☁️', placeholder: 'sk-...', model: 'Qwen', requiresApiKey: false, isOAuth: true, defaultModelId: 'coder-model', apiKeyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key' },
-  { id: 'ollama', name: 'Ollama', icon: '🦙', placeholder: 'Not required', requiresApiKey: false, defaultBaseUrl: 'http://localhost:11434/v1', showBaseUrl: true, showModelId: true, modelIdPlaceholder: 'qwen3:latest' },
-  { id: 'custom', name: 'Custom', icon: '⚙️', placeholder: 'API key...', requiresApiKey: true, showBaseUrl: true, showModelId: true, modelIdPlaceholder: 'your-provider/model-id' },
+  { id: 'moonshot', name: 'Moonshot (CN)', icon: 'M', placeholder: 'sk-...', model: 'Kimi', requiresApiKey: true, defaultBaseUrl: 'https://api.moonshot.cn/v1', defaultModelId: 'kimi-k2.5', apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys' },
+  { id: 'siliconflow', name: 'SiliconFlow (CN)', icon: 'S', placeholder: 'sk-...', model: 'Multi-Model', requiresApiKey: true, defaultBaseUrl: 'https://api.siliconflow.cn/v1', showModelId: true, showModelIdInDevModeOnly: true, modelIdPlaceholder: 'deepseek-ai/DeepSeek-V3', defaultModelId: 'deepseek-ai/DeepSeek-V3', apiKeyUrl: 'https://cloud.siliconflow.cn/account/ak' },
+  { id: 'minimax-portal', name: 'MiniMax (Global)', icon: 'M', placeholder: 'sk-...', model: 'MiniMax', requiresApiKey: false, isOAuth: true, supportsApiKey: true, defaultModelId: 'MiniMax-M2.5', apiKeyUrl: 'https://intl.minimaxi.com/' },
+  { id: 'minimax-portal-cn', name: 'MiniMax (CN)', icon: 'M', placeholder: 'sk-...', model: 'MiniMax', requiresApiKey: false, isOAuth: true, supportsApiKey: true, defaultModelId: 'MiniMax-M2.5', apiKeyUrl: 'https://platform.minimaxi.com/' },
+  { id: 'qwen-portal', name: 'Qwen', icon: 'Q', placeholder: 'sk-...', model: 'Qwen', requiresApiKey: false, isOAuth: true, defaultModelId: 'coder-model', apiKeyUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key' },
+  { id: 'ollama', name: 'Ollama', icon: 'O', placeholder: 'Not required', requiresApiKey: false, defaultBaseUrl: 'http://localhost:11434/v1', showBaseUrl: true, showModelId: true, modelIdPlaceholder: 'qwen3:latest' },
+  { id: 'custom', name: 'Custom', icon: 'C', placeholder: 'API key...', requiresApiKey: true, showBaseUrl: true, showModelId: true, modelIdPlaceholder: 'your-provider/model-id' },
 ];
 
-/** Get the SVG logo URL for a provider type, falls back to undefined */
 export function getProviderIconUrl(type: ProviderType | string): string | undefined {
   return providerIcons[type];
 }
 
-/** Whether a provider's logo needs CSS invert in dark mode (all logos are monochrome) */
 export function shouldInvertInDark(_type: ProviderType | string): boolean {
   return true;
 }
 
-/** Provider list shown in the Setup wizard */
 export const SETUP_PROVIDERS = PROVIDER_TYPE_INFO;
 
-/** Get type info by provider type id */
 export function getProviderTypeInfo(type: ProviderType): ProviderTypeInfo | undefined {
   return PROVIDER_TYPE_INFO.find((t) => t.id === type);
 }
@@ -127,7 +114,6 @@ export function resolveProviderModelForSave(
   return trimmedModelId || provider?.defaultModelId || undefined;
 }
 
-/** Normalize provider API key before saving; Ollama uses a local placeholder when blank. */
 export function resolveProviderApiKeyForSave(type: ProviderType | string, apiKey: string): string | undefined {
   const trimmed = apiKey.trim();
   if (type === 'ollama') {

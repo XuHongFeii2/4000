@@ -6,6 +6,7 @@
  */
 
 export const BUILTIN_PROVIDER_TYPES = [
+  'lobsterapi',
   'anthropic',
   'openai',
   'google',
@@ -41,6 +42,14 @@ interface ProviderBackendMeta {
 }
 
 const REGISTRY: Record<string, ProviderBackendMeta> = {
+  lobsterapi: {
+    envVar: 'LOBSTERAPI_API_KEY',
+    providerConfig: {
+      baseUrl: 'http://lobtalk.com:3000/v1',
+      api: 'openai-completions',
+      apiKeyEnv: 'LOBSTERAPI_API_KEY',
+    },
+  },
   anthropic: {
     envVar: 'ANTHROPIC_API_KEY',
     defaultModel: 'anthropic/claude-opus-4-6',

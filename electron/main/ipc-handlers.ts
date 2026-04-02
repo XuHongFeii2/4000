@@ -50,6 +50,7 @@ import { updateSkillConfig, getSkillConfig, getAllSkillConfigs } from '../utils/
 import { whatsAppLoginManager } from '../utils/whatsapp-login';
 import { getProviderConfig } from '../utils/provider-registry';
 import { getProviderDefaultModel } from '../utils/provider-registry';
+import { resolveProviderBaseUrl } from '../utils/provider-url';
 import { deviceOAuthManager, OAuthProviderType } from '../utils/device-oauth';
 import { applyProxySettings } from './proxy';
 import { proxyAwareFetch } from '../utils/proxy-fetch';
@@ -1257,8 +1258,9 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
         const api = config.type === 'custom' || config.type === 'ollama' ? 'openai-completions' : meta?.api;
 
         if (api) {
+          const resolvedBaseUrl = resolveProviderBaseUrl(config.type, config.baseUrl || meta?.baseUrl);
           await syncProviderConfigToOpenClaw(ock, config.model, {
-            baseUrl: config.baseUrl || meta?.baseUrl,
+            baseUrl: resolvedBaseUrl,
             api,
             apiKeyEnv: meta?.apiKeyEnv,
             headers: meta?.headers,
@@ -1268,10 +1270,10 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
             const resolvedKey = apiKey !== undefined
               ? (apiKey.trim() || null)
               : await getApiKey(config.id);
-            if (resolvedKey && config.baseUrl) {
+            if (resolvedKey && resolvedBaseUrl) {
               const modelId = config.model;
               await updateAgentModelProvider(ock, {
-                baseUrl: config.baseUrl,
+                baseUrl: resolvedBaseUrl,
                 api: 'openai-completions',
                 models: modelId ? [{ id: modelId, name: modelId }] : [],
                 apiKey: resolvedKey,
@@ -1385,10 +1387,11 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
           const fallbackModels = await getProviderFallbackModelRefs(nextConfig);
           const meta = getProviderConfig(nextConfig.type);
           const api = nextConfig.type === 'custom' || nextConfig.type === 'ollama' ? 'openai-completions' : meta?.api;
+          const resolvedBaseUrl = resolveProviderBaseUrl(nextConfig.type, nextConfig.baseUrl || meta?.baseUrl);
 
           if (api) {
             await syncProviderConfigToOpenClaw(ock, nextConfig.model, {
-              baseUrl: nextConfig.baseUrl || meta?.baseUrl,
+              baseUrl: resolvedBaseUrl,
               api,
               apiKeyEnv: meta?.apiKeyEnv,
               headers: meta?.headers,
@@ -1398,10 +1401,10 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
               const resolvedKey = apiKey !== undefined
                 ? (apiKey.trim() || null)
                 : await getApiKey(providerId);
-              if (resolvedKey && nextConfig.baseUrl) {
+              if (resolvedKey && resolvedBaseUrl) {
                 const modelId = nextConfig.model;
                 await updateAgentModelProvider(ock, {
-                  baseUrl: nextConfig.baseUrl,
+                  baseUrl: resolvedBaseUrl,
                   api: 'openai-completions',
                   models: modelId ? [{ id: modelId, name: modelId }] : [],
                   apiKey: resolvedKey,
@@ -1417,10 +1420,19 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
               ? `${ock}/${nextConfig.model}`
               : undefined;
             if (nextConfig.type !== 'custom' && nextConfig.type !== 'ollama') {
-              await setOpenClawDefaultModel(ock, modelOverride, fallbackModels);
+              if (resolvedBaseUrl) {
+                await setOpenClawDefaultModelWithOverride(ock, modelOverride, {
+                  baseUrl: resolvedBaseUrl,
+                  api,
+                  apiKeyEnv: meta?.apiKeyEnv,
+                  headers: meta?.headers,
+                }, fallbackModels);
+              } else {
+                await setOpenClawDefaultModel(ock, modelOverride, fallbackModels);
+              }
             } else {
               await setOpenClawDefaultModelWithOverride(ock, modelOverride, {
-                baseUrl: nextConfig.baseUrl,
+                baseUrl: resolvedBaseUrl,
                 api: 'openai-completions',
               }, fallbackModels);
             }
@@ -1513,13 +1525,25 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
                 : `${ock}/${provider.model}`)
               : undefined;
 
+            const providerMeta = getProviderConfig(provider.type);
+            const resolvedBaseUrl = resolveProviderBaseUrl(provider.type, provider.baseUrl || providerMeta?.baseUrl);
+
             if (provider.type === 'custom' || provider.type === 'ollama') {
               await setOpenClawDefaultModelWithOverride(ock, modelOverride, {
-                baseUrl: provider.baseUrl,
+                baseUrl: resolvedBaseUrl,
                 api: 'openai-completions',
               }, fallbackModels);
             } else {
-              await setOpenClawDefaultModel(ock, modelOverride, fallbackModels);
+              if (resolvedBaseUrl && providerMeta?.api) {
+                await setOpenClawDefaultModelWithOverride(ock, modelOverride, {
+                  baseUrl: resolvedBaseUrl,
+                  api: providerMeta.api,
+                  apiKeyEnv: providerMeta.apiKeyEnv,
+                  headers: providerMeta.headers,
+                }, fallbackModels);
+              } else {
+                await setOpenClawDefaultModel(ock, modelOverride, fallbackModels);
+              }
             }
 
             // Keep auth-profiles in sync with the default provider instance.
@@ -1634,7 +1658,10 @@ function registerProviderHandlers(gatewayManager: GatewayManager): void {
         const registryBaseUrl = getProviderConfig(providerType)?.baseUrl;
         // Prefer caller-supplied baseUrl (live form value) over persisted config.
         // This ensures Setup/Settings validation reflects unsaved edits immediately.
-        const resolvedBaseUrl = options?.baseUrl || provider?.baseUrl || registryBaseUrl;
+        const resolvedBaseUrl = resolveProviderBaseUrl(
+          providerType,
+          options?.baseUrl || provider?.baseUrl || registryBaseUrl
+        );
 
         console.log(`[clawx-validate] validating provider type: ${providerType}`);
         return await validateApiKeyWithProvider(providerType, apiKey, { baseUrl: resolvedBaseUrl });
