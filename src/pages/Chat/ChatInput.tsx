@@ -10,6 +10,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Square, X, Paperclip, FileText, Film, Music, FileArchive, File, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { useProviderStore } from '@/stores/providers';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -78,8 +79,19 @@ function readFileAsBase64(file: globalThis.File): Promise<string> {
 export function ChatInput({ onSend, onStop, disabled = false, sending = false }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
+  const [switchingProvider, setSwitchingProvider] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isComposingRef = useRef(false);
+  const {
+    providers,
+    defaultProviderId,
+    fetchProviders,
+    setDefaultProvider,
+  } = useProviderStore();
+  const configuredProviders = providers.filter((provider) => provider.enabled);
+  const selectedProviderId = defaultProviderId && configuredProviders.some((provider) => provider.id === defaultProviderId)
+    ? defaultProviderId
+    : (configuredProviders[0]?.id ?? '');
 
   // Auto-resize textarea
   useEffect(() => {
@@ -95,6 +107,11 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
       textareaRef.current.focus();
     }
   }, [disabled]);
+
+  // Keep provider list fresh for quick-switch dropdown.
+  useEffect(() => {
+    fetchProviders();
+  }, [fetchProviders]);
 
   // ── File staging via native dialog ─────────────────────────────
 
@@ -318,6 +335,18 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
     [stageBufferFiles],
   );
 
+  const handleProviderChange = useCallback(async (providerId: string) => {
+    if (!providerId || providerId === defaultProviderId) return;
+    setSwitchingProvider(true);
+    try {
+      await setDefaultProvider(providerId);
+    } catch (error) {
+      console.error('Failed to switch default provider:', error);
+    } finally {
+      setSwitchingProvider(false);
+    }
+  }, [defaultProviderId, setDefaultProvider]);
+
   return (
     <div
       className="bg-background p-4"
@@ -341,6 +370,26 @@ export function ChatInput({ onSend, onStop, disabled = false, sending = false }:
 
         {/* Input Row */}
         <div className={`flex items-end gap-2 ${dragOver ? 'ring-2 ring-primary rounded-2xl' : ''}`}>
+          {/* Quick Provider Switch */}
+          <div className="shrink-0 h-[44px] min-w-[140px] rounded-2xl border border-input bg-background px-3">
+            <select
+              value={selectedProviderId}
+              onChange={(e) => void handleProviderChange(e.target.value)}
+              disabled={disabled || sending || switchingProvider || configuredProviders.length === 0}
+              className="h-full w-full bg-transparent text-sm outline-none"
+              title={configuredProviders.length === 0 ? 'No provider configured' : 'Quick switch AI provider'}
+            >
+              {configuredProviders.length === 0 ? (
+                <option value="">No AI provider</option>
+              ) : (
+                configuredProviders.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
 
           {/* Attach Button */}
           <Button

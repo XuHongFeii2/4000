@@ -512,7 +512,7 @@ export function Settings() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <Label>{t('advanced.devMode')}</Label>
+              <Label>{`${t('advanced.devMode')} (\u8fdb\u5165\u539f\u7248openclaw)`}</Label>
               <p className="text-sm text-muted-foreground">
                 {t('advanced.devModeDesc')}
               </p>
